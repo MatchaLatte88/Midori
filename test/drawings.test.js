@@ -2,11 +2,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  FIB_LEVELS, HIT_TOLERANCE, distanceToRay, distanceToRectEdge, distanceToSegment,
-  fibPrices, handleAt, hitTest, isInsideRect, measureStats, pointsRequired,
+  FIB_LEVELS, HIT_TOLERANCE, buildFromGesture, distanceToRay, distanceToRectEdge,
+  distanceToSegment, fibPrices, gesturePoints, handleAt, hitTest, isInsideRect,
+  measureStats, pointsRequired, positionStats,
 } from '../src/components/chart/drawings/geometry.js';
 import {
-  DRAWING_TYPES, createDrawing, moveAnchor, parseDrawing, translateDrawing,
+  DRAWING_TYPES, ENTRY, STOP, TARGET, createDrawing, moveAnchor, parseDrawing,
+  translateDrawing,
 } from '../src/components/chart/drawings/model.js';
 
 const SIZE = { width: 800, height: 400 };
@@ -140,12 +142,144 @@ test('measure from a price of zero reports no percentage rather than Infinity', 
   assert.equal(measureStats(0, 50, 3).percent, null);
 });
 
+/* ─── Position tools ────────────────────────────────────────────────────── */
+
+test('a long drag places the target at twice the risk above the entry', () => {
+  // Dragged from entry 100 down to stop 90: risk 10, so the target starts at 120.
+  const pts = buildFromGesture('long', { time: 0, price: 100 }, { time: 5, price: 90 });
+
+  assert.equal(pts.length, 3);
+  assert.deepEqual(pts[ENTRY], { time: 0, price: 100 });
+  assert.deepEqual(pts[STOP], { time: 5, price: 90 });
+  assert.equal(pts[TARGET].price, 120, `2 × 10 above the entry, got ${pts[TARGET].price}`);
+  assert.equal(pts[TARGET].time, 5, 'the target shares the right edge with the stop');
+});
+
+test('a short drag mirrors it: stop above, target below', () => {
+  // Entry 100, stop dragged up to 110: risk 10, target at 80.
+  const pts = buildFromGesture('short', { time: 0, price: 100 }, { time: 5, price: 110 });
+
+  assert.equal(pts[STOP].price, 110);
+  assert.equal(pts[TARGET].price, 80, `2 × 10 below the entry, got ${pts[TARGET].price}`);
+});
+
+test('tools other than positions store exactly what was dragged', () => {
+  const a = { time: 0, price: 10 };
+  const b = { time: 5, price: 20 };
+  assert.deepEqual(buildFromGesture('trendline', a, b), [a, b]);
+  assert.deepEqual(buildFromGesture('horizontal', a, b), [a], 'a one-point tool ignores the end');
+  assert.equal(gesturePoints('long'), 2, 'a position is dragged with two points');
+  assert.equal(pointsRequired('long'), 3, 'but stored with three');
+});
+
+test('position stats report risk, reward and R:R', () => {
+  const s = positionStats(100, 90, 120);
+  assert.equal(s.risk, 10);
+  assert.equal(s.reward, 20);
+  assert.equal(s.rr, 2);
+  assert.equal(s.riskPercent, 10);
+  assert.equal(s.rewardPercent, 20);
+});
+
+test('a short reads the same way round as a long', () => {
+  // Stop above and target below must give the same positive distances.
+  const long = positionStats(100, 90, 120);
+  const short = positionStats(100, 110, 80);
+  assert.equal(short.risk, long.risk);
+  assert.equal(short.reward, long.reward);
+  assert.equal(short.rr, long.rr);
+});
+
+test('a stop at the entry reports no R:R rather than infinity', () => {
+  const s = positionStats(100, 100, 120);
+  assert.equal(s.risk, 0);
+  assert.equal(s.rr, null, 'dividing by no risk would invent a number');
+});
+
+test('a position block is grabbable anywhere inside it', () => {
+  // entry y=200, stop y=250, target y=100, spanning x 100..300.
+  const pts = [{ x: 100, y: 200 }, { x: 300, y: 250 }, { x: 300, y: 100 }];
+  assert.equal(hitTest('long', pts, { x: 200, y: 150 }, SIZE), true, 'in the reward zone');
+  assert.equal(hitTest('long', pts, { x: 200, y: 230 }, SIZE), true, 'in the risk zone');
+  assert.equal(hitTest('long', pts, { x: 200, y: 200 }, SIZE), true, 'on the entry line');
+  assert.equal(hitTest('long', pts, { x: 400, y: 200 }, SIZE), false, 'right of the block');
+  assert.equal(hitTest('long', pts, { x: 200, y: 60 }, SIZE), false, 'above the target');
+  assert.equal(hitTest('short', pts, { x: 200, y: 150 }, SIZE), true, 'same test for a short');
+});
+
+test('an unfinished position block is not a hit', () => {
+  assert.equal(hitTest('long', [{ x: 0, y: 0 }, { x: 10, y: 10 }], { x: 5, y: 5 }, SIZE), false);
+});
+
+test('dragging the stop or target moves the shared right edge, not just one', () => {
+  // Both sit on the right edge; moving one alone would tear the block in half.
+  const d = createDrawing('long', [
+    { time: 0, price: 100 },
+    { time: 500, price: 90 },
+    { time: 500, price: 120 },
+  ]);
+
+  const stopMoved = moveAnchor(d, STOP, 800, 85);
+  assert.equal(stopMoved.points[STOP].price, 85);
+  assert.equal(stopMoved.points[STOP].time, 800);
+  assert.equal(stopMoved.points[TARGET].time, 800, 'the target followed the edge');
+  assert.equal(stopMoved.points[TARGET].price, 120, 'but kept its own price');
+  assert.equal(stopMoved.points[ENTRY].time, 0, 'the left edge is untouched');
+
+  const targetMoved = moveAnchor(d, TARGET, 900, 130);
+  assert.equal(targetMoved.points[STOP].time, 900);
+  assert.equal(targetMoved.points[STOP].price, 90);
+});
+
+test('dragging the entry leaves the right edge alone', () => {
+  const d = createDrawing('long', [
+    { time: 0, price: 100 },
+    { time: 500, price: 90 },
+    { time: 500, price: 120 },
+  ]);
+  const moved = moveAnchor(d, ENTRY, 200, 105);
+
+  assert.deepEqual(moved.points[ENTRY], { time: 200, price: 105 });
+  assert.equal(moved.points[STOP].time, 500, 'the right edge stayed');
+  assert.equal(moved.points[TARGET].time, 500);
+});
+
+test('a position survives create → parse with all three anchors', () => {
+  const original = createDrawing('short', [
+    { time: 1000, price: 50 },
+    { time: 2000, price: 55 },
+    { time: 2000, price: 40 },
+  ], { color: 'ind-4' });
+  const back = parseDrawing(JSON.parse(JSON.stringify(original)));
+
+  assert.equal(back.type, 'short');
+  assert.equal(back.points.length, 3);
+  assert.deepEqual(back.points, original.points);
+});
+
+test('a position with the wrong number of anchors is refused', () => {
+  assert.throws(() => createDrawing('long', [
+    { time: 0, price: 1 }, { time: 1, price: 2 },
+  ]), /needs exactly 3/);
+  assert.equal(parseDrawing({
+    type: 'long', points: [{ time: 0, price: 1 }, { time: 1, price: 2 }],
+  }), null);
+});
+
 /* ─── Model ─────────────────────────────────────────────────────────────── */
 
 test('every drawing type declares how many points it needs', () => {
   for (const type of DRAWING_TYPES) {
-    const n = pointsRequired(type);
-    assert.ok(n === 1 || n === 2, `${type} wants ${n} points`);
+    const stored = pointsRequired(type);
+    const dragged = gesturePoints(type);
+    assert.ok(stored >= 1 && stored <= 3, `${type} stores ${stored} points`);
+    assert.ok(dragged === 1 || dragged === 2, `${type} is dragged with ${dragged} points`);
+    // A drag must produce exactly what the type stores, or nothing can be built.
+    assert.equal(
+      buildFromGesture(type, { time: 0, price: 10 }, { time: 1, price: 5 }).length,
+      stored,
+      `${type}: the drag must yield ${stored} anchors`,
+    );
   }
   assert.throws(() => pointsRequired('spiral'), /unknown drawing type/);
 });

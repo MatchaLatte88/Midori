@@ -103,8 +103,13 @@ pessimistische Regel, und jeder Fill vermerkt in `resolution`, wie er zustande k
 ## Zeichenwerkzeuge
 
 Links am Chart: Trendlinie, Strahl, horizontale und vertikale Linie, Rechteck, Fibonacci-
-Retracement und ein Messwerkzeug. Werkzeug waehlen, ziehen, fertig — danach springt die Leiste
-zurueck auf den Cursor. Mit dem Cursor lassen sich Zeichnungen anklicken, verschieben und an
+Retracement, Messwerkzeug sowie Long- und Short-Position. Werkzeug waehlen, ziehen, fertig —
+danach springt die Leiste zurueck auf den Cursor.
+
+**Long/Short-Position**: vom Entry zum Stop ziehen. Das Ziel setzt sich auf 2R und ist danach
+frei verschiebbar wie die anderen beiden Anker. Die Stop-Seite ist rot, die Ziel-Seite gruen,
+und der Block zeigt Entry, SL, TP mit Prozentabstand sowie Risiko, Chance und
+Chance-Risiko-Verhaeltnis. Mit dem Cursor lassen sich Zeichnungen anklicken, verschieben und an
 ihren Ankerpunkten anfassen; `Entf` loescht die Auswahl, `Esc` bricht ab. Die Farbfelder
 faerben die Auswahl um, wenn eine besteht.
 

@@ -143,6 +143,19 @@ export function hitTest(type, pts, at, size) {
       });
     }
 
+    case 'long':
+    case 'short': {
+      if (pts.length < 3) return false;
+      // The whole block is grabbable: it is a zone, and clicking inside one is
+      // the obvious way to pick it up.
+      const xs = pts.map((p) => p.x);
+      const ys = pts.map((p) => p.y);
+      return at.x >= Math.min(...xs) - HIT_TOLERANCE
+        && at.x <= Math.max(...xs) + HIT_TOLERANCE
+        && at.y >= Math.min(...ys) - HIT_TOLERANCE
+        && at.y <= Math.max(...ys) + HIT_TOLERANCE;
+    }
+
     default:
       throw new Error(`hitTest: unknown drawing type "${type}"`);
   }
@@ -171,7 +184,64 @@ export function pointsRequired(type) {
     case 'fib':
     case 'measure':
       return 2;
+    case 'long':
+    case 'short':
+      // entry, stop and target — three prices, two of which share a time.
+      return 3;
     default:
       throw new Error(`pointsRequired: unknown drawing type "${type}"`);
   }
+}
+
+/** Reward-to-risk a fresh position tool starts with. */
+export const DEFAULT_RR = 2;
+
+/**
+ * Turns the two points of a drag into a drawing's stored anchors.
+ *
+ * Most tools store exactly what was dragged. A position tool does not: the drag
+ * gives entry and stop, and the target is placed at DEFAULT_RR times the risk on
+ * the other side of the entry — the way a trader sizes a trade in the first
+ * place. All three stay adjustable afterwards.
+ */
+export function buildFromGesture(type, start, end) {
+  if (type !== 'long' && type !== 'short') {
+    return pointsRequired(type) === 1 ? [start] : [start, end];
+  }
+
+  const risk = start.price - end.price; // signed: the drag decides the direction
+  return [
+    { time: start.time, price: start.price },              // entry
+    { time: end.time, price: end.price },                  // stop
+    { time: end.time, price: start.price + risk * DEFAULT_RR }, // target
+  ];
+}
+
+/** How many points the drag itself collects, before buildFromGesture. */
+export function gesturePoints(type) {
+  return type === 'long' || type === 'short' ? 2 : pointsRequired(type);
+}
+
+/**
+ * What a position tool is worth: distances, percentages and reward-to-risk.
+ *
+ * Risk and reward are absolute distances, so the numbers read the same whether
+ * the stop sits above or below the entry. Which side is which is a matter of
+ * where the anchors are, not of the arithmetic.
+ */
+export function positionStats(entry, stop, target) {
+  const risk = Math.abs(entry - stop);
+  const reward = Math.abs(target - entry);
+  return {
+    entry,
+    stop,
+    target,
+    risk,
+    reward,
+    riskPercent: entry === 0 ? null : (risk / Math.abs(entry)) * 100,
+    rewardPercent: entry === 0 ? null : (reward / Math.abs(entry)) * 100,
+    // A stop at the entry has no risk to divide by — say so rather than
+    // reporting an infinite reward-to-risk.
+    rr: risk === 0 ? null : reward / risk,
+  };
 }

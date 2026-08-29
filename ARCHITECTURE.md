@@ -232,7 +232,29 @@ Zeichenfunktionen mit. Sie sind deshalb selbst gebaut, über dieselbe Plugin-API
 Profile.
 
 Vorhanden: Trendlinie, Strahl, horizontale und vertikale Linie, Rechteck, Fibonacci-
-Retracement und ein Messwerkzeug (Preisdifferenz, Prozent, Anzahl Bars).
+Retracement, ein Messwerkzeug (Preisdifferenz, Prozent, Anzahl Bars) sowie Long- und
+Short-Position.
+
+### Positionswerkzeuge
+
+Long und Short sind die einzigen Zeichnungen mit drei Preisen statt zwei Punkten: Entry, Stop
+und Ziel. Gezogen wird nur vom Entry zum Stop — das Ziel setzt sich zunächst auf das Doppelte
+des Risikos auf der Gegenseite, weil so ein Trade tatsächlich bemessen wird. Danach ist jeder
+der drei Anker frei verschiebbar.
+
+Gespeichert werden drei Anker, und Stop und Ziel teilen sich die rechte Kante. Wird einer von
+beiden gezogen, muss der andere in der Zeit mitgehen, sonst reißt der Block auseinander;
+`moveAnchor` behandelt das typspezifisch. Der Entry besitzt die linke Kante allein.
+
+**Rot und Grün gelten hier — und nur hier.** Der Chart hält Kerzen bewusst in Blau/Weiß
+(Abschnitt 10), damit Grün dem Akzent gehört. Ein Positionsblock ist aber keine Kerze, sondern
+eine Fläche mit eindeutiger Bedeutung: Die Stop-Seite ist immer rot, die Ziel-Seite immer grün.
+Die Farbe folgt der Bedeutung, nicht der Richtung — ein Short liest sich damit genauso herum
+wie ein Long, und Risiko und Chance sind absolute Abstände.
+
+Angezeigt werden Entry, Stop und Ziel mit Prozentabstand sowie Risiko, Chance und das
+Chance-Risiko-Verhältnis. Sitzt der Stop auf dem Entry, ist das Verhältnis `null` statt
+unendlich — es gibt dann kein Risiko, durch das sich teilen ließe.
 
 ### Ankerpunkte sind Markt-, keine Bildschirmkoordinaten
 
@@ -382,7 +404,8 @@ bleiben.
 - **M0.5 — Indikatoren** ✅ Gemeinsames Indikator-Modul, Volume Profile mit POC, Value Area
   und Buy/Sell-Delta, Bedienpanel.
 - **M0.6 — Zeichenwerkzeuge** ✅ Trendlinie, Strahl, horizontale/vertikale Linie, Rechteck,
-  Fibonacci, Messwerkzeug; Auswählen, Verschieben, Ankerpunkte ziehen, Speicherung pro Symbol.
+  Fibonacci, Messwerkzeug, Long- und Short-Position mit Risiko/Chance-Zonen; Auswählen,
+  Verschieben, Ankerpunkte ziehen, Speicherung pro Symbol.
 - **M1 — Order-Engine** ✅ Market/Limit/Stop, Klammern mit gegenseitiger Aufhebung, Spread,
   Slippage, Kommission, Teilausführungen und Umkehr, Intrabar-Auflösung über die 1m-Basis,
   Backtest-Loop mit Kennzahlen. Vorgezogen, weil Replay sonst zweimal gebaut würde.

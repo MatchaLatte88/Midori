@@ -58,7 +58,28 @@ export const TOOLS = [
     hint: 'Change in price, percent and bars',
     icon: 'measure',
   },
+  {
+    id: 'long',
+    name: 'Long position',
+    hint: 'Drag from entry down to the stop; the target starts at 2R',
+    icon: 'long',
+  },
+  {
+    id: 'short',
+    name: 'Short position',
+    hint: 'Drag from entry up to the stop; the target starts at 2R',
+    icon: 'short',
+  },
 ];
+
+/** Anchor order for the position tools, used by the renderer and the handles. */
+export const ENTRY = 0;
+export const STOP = 1;
+export const TARGET = 2;
+
+export function isPositionTool(type) {
+  return type === 'long' || type === 'short';
+}
 
 export const DRAWING_TYPES = TOOLS.filter((t) => t.id !== 'cursor').map((t) => t.id);
 
@@ -143,6 +164,16 @@ export function moveAnchor(drawing, index, time, price) {
   if (index < 0 || index >= drawing.points.length) {
     throw new Error(`moveAnchor: index ${index} out of range for ${drawing.type}`);
   }
+
   const points = drawing.points.map((p, i) => (i === index ? { time, price } : p));
+
+  /* A position block has one right edge, shared by the stop and target anchors.
+   * Dragging either of them must move both, or the block tears in half. The
+   * entry anchor owns the left edge on its own. */
+  if (isPositionTool(drawing.type) && (index === STOP || index === TARGET)) {
+    const other = index === STOP ? TARGET : STOP;
+    points[other] = { ...points[other], time };
+  }
+
   return { ...drawing, points };
 }

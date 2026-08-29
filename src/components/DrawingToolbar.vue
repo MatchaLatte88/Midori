@@ -60,6 +60,20 @@ const tools = computed(() => TOOLS);
           <path d="M6 4v16M18 4v16M6 12h12" />
           <path d="M9 9l-3 3 3 3M15 9l3 3-3 3" />
         </template>
+        <!-- Long: target block above the entry, stop below -->
+        <template v-else-if="tool.icon === 'long'">
+          <rect x="4" y="5" width="16" height="7" rx="1" :style="{ fill: 'var(--pos)', fillOpacity: 0.25 }" />
+          <rect x="4" y="12" width="16" height="5" rx="1" :style="{ fill: 'var(--neg)', fillOpacity: 0.25 }" />
+          <path d="M4 12h16" />
+          <path d="M12 21v-2M9.5 20.5l2.5-2 2.5 2" />
+        </template>
+        <!-- Short: mirrored — target below, stop above -->
+        <template v-else-if="tool.icon === 'short'">
+          <rect x="4" y="7" width="16" height="5" rx="1" :style="{ fill: 'var(--neg)', fillOpacity: 0.25 }" />
+          <rect x="4" y="12" width="16" height="7" rx="1" :style="{ fill: 'var(--pos)', fillOpacity: 0.25 }" />
+          <path d="M4 12h16" />
+          <path d="M12 3v2M9.5 3.5l2.5 2 2.5-2" />
+        </template>
       </svg>
     </button>
 

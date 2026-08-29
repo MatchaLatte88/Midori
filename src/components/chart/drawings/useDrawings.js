@@ -17,7 +17,7 @@
  * works in seconds, so conversion happens at this boundary and nowhere else.
  */
 import { ref, shallowRef } from 'vue';
-import { handleAt, hitTest, pointsRequired } from './geometry.js';
+import { buildFromGesture, gesturePoints, handleAt, hitTest } from './geometry.js';
 import { createDrawing, moveAnchor, parseDrawing, translateDrawing } from './model.js';
 
 /**
@@ -186,15 +186,16 @@ export function useDrawings(deps) {
     if (!at) return;
 
     if (activeTool.value !== 'cursor') {
-      const needed = pointsRequired(activeTool.value);
-      // One-point tools are a single click; two-point tools a drag.
+      // One-point tools are a single click; the rest are a drag. The draft
+      // always holds finished anchors, so a position block shows its zones and
+      // its reward-to-risk while it is still being dragged out.
       draft.value = {
         type: activeTool.value,
         color: activeColor.value,
         width: 1,
-        points: needed === 1 ? [at] : [at, at],
+        points: buildFromGesture(activeTool.value, at, at),
       };
-      gesture = { mode: 'create' };
+      gesture = { mode: 'create', start: at };
       return;
     }
 
@@ -220,8 +221,11 @@ export function useDrawings(deps) {
     if (!at) return;
 
     if (gesture.mode === 'create') {
-      if (draft.value.points.length === 2) {
-        draft.value = { ...draft.value, points: [draft.value.points[0], at] };
+      if (gesturePoints(draft.value.type) === 2) {
+        draft.value = {
+          ...draft.value,
+          points: buildFromGesture(draft.value.type, gesture.start, at),
+        };
       }
       return;
     }
@@ -251,15 +255,14 @@ export function useDrawings(deps) {
 
     if (gesture.mode === 'create' && draft.value) {
       const { type, points, color } = draft.value;
-      const needed = pointsRequired(type);
 
-      // A two-point shape that never moved is a stray click, not a drawing.
-      const degenerate = needed === 2
+      // A dragged shape that never moved is a stray click, not a drawing.
+      const degenerate = gesturePoints(type) === 2
         && points[0].time === points[1].time && points[0].price === points[1].price;
 
       if (!degenerate) {
         try {
-          const drawing = createDrawing(type, points.slice(0, needed), { color });
+          const drawing = createDrawing(type, points, { color });
           drawings.value = [...drawings.value, drawing];
           selectedId.value = drawing.id;
           save();

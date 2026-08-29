@@ -7,7 +7,10 @@
  * Drawn at zOrder 'top' — unlike the volume profile, a level the user placed
  * by hand should sit above the candles, because that is where they put it.
  */
-import { FIB_LEVELS, HANDLE_RADIUS, fibPrices, measureStats } from './geometry.js';
+import {
+  FIB_LEVELS, HANDLE_RADIUS, fibPrices, measureStats, positionStats,
+} from './geometry.js';
+import { ENTRY, STOP, TARGET } from './model.js';
 
 function tokenColor(id) {
   const s = getComputedStyle(document.documentElement);
@@ -131,6 +134,11 @@ class DrawingRenderer {
         if (b) this._measure(ctx, drawing, a, b);
         break;
 
+      case 'long':
+      case 'short':
+        if (pts.length === 3) this._position(ctx, size, drawing, pts);
+        break;
+
       default:
         break;
     }
@@ -202,6 +210,94 @@ class DrawingRenderer {
     ctx.fillRect(left, Math.min(a.y, b.y), right - left, Math.abs(b.y - a.y));
     ctx.globalAlpha /= 0.07;
     ctx.fillStyle = color;
+  }
+
+  /**
+   * A long or short position: the risk zone from entry to stop, the reward zone
+   * from entry to target, and the numbers that decide whether the trade is
+   * worth taking.
+   *
+   * Colour follows meaning, not direction: the stop side is always red and the
+   * target side always green, so a short reads the same way round as a long.
+   * This is the one place red and green belong on this chart — they are zones,
+   * not candles, and there is nothing else for them to be confused with.
+   */
+  _position(ctx, size, drawing, pts) {
+    const c = chromeColors();
+    const [entryPt, stopPt, targetPt] = drawing.points;
+    const stats = positionStats(entryPt.price, stopPt.price, targetPt.price);
+
+    const left = pts[ENTRY].x;
+    const right = pts[STOP].x;
+    const x = Math.min(left, right);
+    const width = Math.abs(right - left);
+
+    const yEntry = pts[ENTRY].y;
+    const yStop = pts[STOP].y;
+    const yTarget = pts[TARGET].y;
+
+    // Zones. Each spans from the entry line to its own level, so they meet at
+    // the entry and never overlap.
+    const zone = (yFrom, yTo, color) => {
+      const top = Math.min(yFrom, yTo);
+      const height = Math.abs(yTo - yFrom);
+      if (height < 0.5) return;
+      ctx.fillStyle = withAlpha(color, 0.13);
+      const previous = ctx.globalAlpha;
+      ctx.globalAlpha = previous * 0.13;
+      ctx.fillRect(x, top, width, height);
+      ctx.globalAlpha = previous;
+    };
+
+    zone(yEntry, yStop, c.neg);
+    zone(yEntry, yTarget, c.pos);
+
+    // Level lines.
+    const level = (y, color, dashed) => {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      ctx.setLineDash(dashed ? [4, 3] : []);
+      this._line(ctx, x, y, x + width, y);
+      ctx.setLineDash([]);
+    };
+
+    level(yStop, c.neg, false);
+    level(yTarget, c.pos, false);
+    level(yEntry, c.text, true);
+
+    // Labels on each level, inside the block.
+    ctx.font = '10px "DM Mono", ui-monospace, monospace';
+    ctx.textBaseline = 'bottom';
+
+    const label = (y, text, color) => {
+      ctx.fillStyle = color;
+      ctx.fillText(text, x + 5, y - 3);
+    };
+
+    const pct = (v) => (v == null ? '—' : `${v.toFixed(2)}%`);
+    label(yTarget, `TP  ${formatPrice(stats.target)}   +${pct(stats.rewardPercent)}`, c.pos);
+    label(yEntry, `Entry  ${formatPrice(stats.entry)}`, c.text);
+    label(yStop, `SL  ${formatPrice(stats.stop)}   −${pct(stats.riskPercent)}`, c.neg);
+
+    // Summary box, above or below the block depending on where there is room.
+    const rr = stats.rr == null ? '—' : `${stats.rr.toFixed(2)}`;
+    const lines = [
+      `${drawing.type === 'long' ? 'LONG' : 'SHORT'}   R:R ${rr}`,
+      `risk ${formatPrice(stats.risk)}   reward ${formatPrice(stats.reward)}`,
+    ];
+
+    const boxWidth = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 12;
+    const boxHeight = lines.length * 13 + 7;
+    const blockTop = Math.min(yEntry, yStop, yTarget);
+    const blockBottom = Math.max(yEntry, yStop, yTarget);
+    const boxY = blockTop - boxHeight - 5 >= 0 ? blockTop - boxHeight - 5 : blockBottom + 5;
+
+    const tone = stats.rr != null && stats.rr >= 1 ? c.pos : c.neg;
+    ctx.fillStyle = tone;
+    ctx.fillRect(x, boxY, boxWidth, boxHeight);
+    ctx.fillStyle = c.panel;
+    ctx.textBaseline = 'top';
+    lines.forEach((line, i) => ctx.fillText(line, x + 6, boxY + 4 + i * 13));
   }
 
   _measure(ctx, drawing, a, b) {
