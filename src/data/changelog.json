@@ -1,0 +1,46 @@
+{
+  "releases": [
+    {
+      "version": "v0.1.0-dev",
+      "date": "Aug 2026",
+      "changes": [
+        {
+          "type": "feat",
+          "text": "Download years of 1-minute history straight from Binance's public archive — no API key, no account, no subscription. Every file is checksum-verified and stored on your own machine"
+        },
+        {
+          "type": "feat",
+          "text": "Charts in seven timeframes, from 1 minute to daily, with older bars loading as you scroll back"
+        },
+        {
+          "type": "feat",
+          "text": "Volume profile with point of control, value area and a buy/sell delta. It is always built from 1-minute bars, so the profile does not change just because you switched the chart to 4h"
+        },
+        {
+          "type": "feat",
+          "text": "Indicators: moving average, exponential MA, Bollinger Bands, RSI, ATR and VWAP. Oscillators get their own pane instead of sharing a scale with price"
+        },
+        {
+          "type": "feat",
+          "text": "Drawing tools — trend line, ray, horizontal and vertical line, rectangle, Fibonacci retracement and a measure tool. Drawings are anchored to time and price, so they stay put through zooming, panning and timeframe changes, and are saved per symbol"
+        },
+        {
+          "type": "feat",
+          "text": "Long and short position tools showing entry, stop and target with the risk zone in red and the reward zone in green, plus risk, reward and reward-to-risk. Zone colours and fill opacity are adjustable per drawing"
+        },
+        {
+          "type": "feat",
+          "text": "Backtesting engine with market, limit and stop orders, brackets that cancel each other, spread, slippage and commission. Fills are resolved through the 1-minute bars, so a bar that touches both your stop and your target is decided by what actually happened first rather than by a guess"
+        },
+        {
+          "type": "feat",
+          "text": "Strategies are plain JavaScript with an onBar hook. They cannot see past the current bar, and an order never fills on the bar that placed it"
+        },
+        {
+          "type": "feat",
+          "text": "Light and dark mode, or follow the system — including the native window frame"
+        }
+      ]
+    }
+  ]
+}

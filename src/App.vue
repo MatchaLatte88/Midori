@@ -1,13 +1,17 @@
 <script setup>
-import { onMounted } from 'vue';
+import { onMounted, ref } from 'vue';
 import ChartPanel from './components/ChartPanel.vue';
 import DataManager from './components/DataManager.vue';
 import IndicatorPanel from './components/IndicatorPanel.vue';
+import ChangelogModal from './components/ChangelogModal.vue';
+import { APP_VERSION } from './generated/version.js';
 import {
   initTheme, refreshDatasets, session, setError, setThemeMode, setTimeframe,
 } from './stores/session.js';
 
 const TIMEFRAMES = ['1m', '5m', '15m', '30m', '1h', '4h', '1d'];
+
+const changelogOpen = ref(false);
 
 const THEME_OPTIONS = [
   { id: 'light', label: 'Light' },
@@ -30,10 +34,11 @@ onMounted(async () => {
   <div class="ambient"></div>
 
   <header class="topbar">
-    <div class="brand">
+    <button class="brand" title="Release notes" @click="changelogOpen = true">
       <span class="brand-mark">緑</span>
       <span class="brand-name">Midori</span>
-    </div>
+      <span class="brand-version">{{ APP_VERSION }}</span>
+    </button>
 
     <div class="k-divider"></div>
 
@@ -74,6 +79,8 @@ onMounted(async () => {
     </div>
   </header>
 
+  <ChangelogModal :open="changelogOpen" @close="changelogOpen = false" />
+
   <main class="workspace">
     <DataManager />
     <ChartPanel :symbol="session.symbol" :timeframe="session.timeframe" />
@@ -101,7 +108,23 @@ onMounted(async () => {
   -webkit-app-region: no-drag;
 }
 
-.brand { display: flex; align-items: center; gap: 7px; }
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 6px 3px 3px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+.brand:hover { border-color: var(--brd); background: var(--glass); }
+.brand-version {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 10px;
+  color: var(--faint);
+}
 .brand-mark {
   display: grid;
   place-items: center;

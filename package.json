@@ -1,6 +1,6 @@
 {
   "name": "project-midori",
-  "version": "0.1.0",
+  "version": "0.1.0-dev",
   "description": "Midori — local backtesting and trading-bot workbench",
   "private": true,
   "type": "module",
@@ -10,7 +10,9 @@
     "build": "vite build",
     "start": "electron .",
     "app": "concurrently -k -n VITE,ELECTRON -c cyan,green \"vite\" \"wait-on tcp:5300 && electron .\"",
-    "test": "node --test"
+    "test": "node --test",
+    "sync:version": "node scripts/sync-version.mjs",
+    "check:version": "node scripts/check-version.mjs"
   },
   "dependencies": {
     "fflate": "^0.8.2",

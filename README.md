@@ -28,13 +28,27 @@ npm run app       # Vite auf Port 5300 + Electron
 Weitere Skripte:
 
 ```powershell
-npm test          # node --test (Store, Aggregation, Binance-Parser)
+npm test          # node --test (Store, Aggregation, Binance-Parser, Engine, Zeichnungen)
 npm run dev       # nur Vite
 npm run build     # Renderer nach dist/
 node scripts/smoke.js BTCUSDT 2024-01-01 2024-02-01   # echter Download in ein Temp-Verzeichnis
 node scripts/check-migration.js                       # installierte Datensaetze pruefen (read-only)
 node scripts/backtest.js sma-cross BTCUSDT 1h         # Strategie auf lokalen Daten laufen lassen
+npm run sync:version                                  # version.json in alle abgeleiteten Dateien schreiben
+npm run check:version                                 # auf Versions-Drift pruefen (schreibt nichts)
 ```
+
+## Version und Changelog
+
+`version.json` im Root ist die einzige von Hand gepflegte Version. Alles andere —
+`package.json`, `package-lock.json` und `src/generated/version.js` — wird daraus mit
+`npm run sync:version` erzeugt und darf nicht von Hand editiert werden.
+
+Die Versionsnummer steht links oben neben dem Namen; ein Klick oeffnet die Release Notes aus
+`src/data/changelog.json`. Regeln und Begruendung: [docs/versioning-contract.md](docs/versioning-contract.md).
+
+Fuer einen Release gibt es den Skill `/ship`: Version hochzaehlen, Changelog schreiben, Gates
+laufen lassen, committen und pushen — in einem Schritt.
 
 ## Erste Schritte in der App
 
@@ -157,7 +171,9 @@ src/
   components/chart/drawings/  Geometrie, Modell, Rendering und Maussteuerung
   stores/session.js Symbol, Timeframe, Bibliothek, aktive Indikatoren
   styles/           Katsumii „Living Data" — tokens.css, base.css, fonts.css
-test/               node:test — Store, Aggregation, Binance-Parser, Indikatoren, Profil
+scripts/            Werkzeuge: Smoke-Test, Backtest-Runner, Versions-Sync
+test/               node:test — Store, Aggregation, Parser, Indikatoren, Profil, Engine,
+                    Zeichnungen, Versionierung
 ```
 
 Details und Begründungen der Entscheidungen: [ARCHITECTURE.md](ARCHITECTURE.md).
