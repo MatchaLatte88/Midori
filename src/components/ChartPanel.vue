@@ -8,6 +8,7 @@ import { useDrawings } from './chart/drawings/useDrawings.js';
 import DrawingToolbar from './DrawingToolbar.vue';
 import PositionStyleBar from './PositionStyleBar.vue';
 import { isPositionTool } from './chart/drawings/model.js';
+import { latestPage, prependBars, previousPage } from './chart/barPaging.js';
 import { datasetFor, session, setError, setVolumeProfile } from '../stores/session.js';
 
 const props = defineProps({
@@ -296,8 +297,8 @@ async function loadInitial() {
   status.value = 'Loading…';
   try {
     const step = TF_MS[props.timeframe];
-    const to = meta.last + step;
-    const from = Math.max(meta.first, to - PAGE * step);
+    // Page boundaries sit on timeframe buckets — see chart/barPaging.js.
+    const { from, to } = latestPage(meta, step, PAGE);
     const raw = await fetchRange(from, to);
     bars = toSeries(raw);
     earliestMs = from;
@@ -325,15 +326,19 @@ async function loadOlder() {
   loadingPage = true;
   try {
     const step = TF_MS[props.timeframe];
-    const to = earliestMs;
-    const from = Math.max(meta.first, to - PAGE * step);
-    const raw = await fetchRange(from, to);
+    const page = previousPage(meta, step, PAGE, earliestMs);
+    if (!page) {
+      earliestMs = meta.first; // nothing older exists; stop asking
+      return;
+    }
+
+    const raw = await fetchRange(page.from, page.to);
     if (raw.length) {
-      bars = [...toSeries(raw), ...bars];
-      earliestMs = from;
+      bars = prependBars(toSeries(raw), bars);
+      earliestMs = page.from;
       render();
     } else {
-      earliestMs = meta.first; // nothing older exists; stop asking
+      earliestMs = meta.first;
     }
   } catch (err) {
     setError(err);
