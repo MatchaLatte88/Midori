@@ -22,4 +22,9 @@ contextBridge.exposeInMainWorld('midori', {
     load: (symbol) => ipcRenderer.invoke('drawings:load', symbol),
     save: (symbol, drawings) => ipcRenderer.invoke('drawings:save', { symbol, drawings }),
   },
+
+  ui: {
+    /** Keeps the native title bar in step with the app's theme. */
+    setTheme: (theme) => ipcRenderer.invoke('ui:set-theme', theme),
+  },
 });

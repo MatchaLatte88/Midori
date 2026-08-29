@@ -7,7 +7,8 @@ import {
   measureStats, pointsRequired, positionStats,
 } from '../src/components/chart/drawings/geometry.js';
 import {
-  DRAWING_TYPES, ENTRY, STOP, TARGET, createDrawing, moveAnchor, parseDrawing,
+  DEFAULT_POSITION_STYLE, DRAWING_TYPES, ENTRY, MAX_FILL_OPACITY, STOP, TARGET,
+  ZONE_COLORS, createDrawing, moveAnchor, normalizeOpacity, parseDrawing,
   translateDrawing,
 } from '../src/components/chart/drawings/model.js';
 
@@ -264,6 +265,82 @@ test('a position with the wrong number of anchors is refused', () => {
   assert.equal(parseDrawing({
     type: 'long', points: [{ time: 0, price: 1 }, { time: 1, price: 2 }],
   }), null);
+});
+
+/* ─── Position styling ──────────────────────────────────────────────────── */
+
+test('a position block carries its own zone colours and opacity', () => {
+  const d = createDrawing('long', [
+    { time: 0, price: 100 }, { time: 5, price: 90 }, { time: 5, price: 120 },
+  ]);
+  assert.equal(d.profitColor, DEFAULT_POSITION_STYLE.profitColor);
+  assert.equal(d.lossColor, DEFAULT_POSITION_STYLE.lossColor);
+  assert.equal(d.fillOpacity, DEFAULT_POSITION_STYLE.fillOpacity);
+
+  const styled = createDrawing('short', [
+    { time: 0, price: 100 }, { time: 5, price: 110 }, { time: 5, price: 80 },
+  ], { profitColor: 'ind-2', lossColor: 'ind-4', fillOpacity: 0.35 });
+  assert.equal(styled.profitColor, 'ind-2');
+  assert.equal(styled.lossColor, 'ind-4');
+  assert.equal(styled.fillOpacity, 0.35);
+});
+
+test('other drawing types do not carry dead styling fields', () => {
+  const line = createDrawing('trendline', [
+    { time: 0, price: 1 }, { time: 1, price: 2 },
+  ]);
+  assert.equal('profitColor' in line, false);
+  assert.equal('fillOpacity' in line, false);
+});
+
+test('opacity is clamped into a usable range', () => {
+  assert.equal(normalizeOpacity(0.25), 0.25);
+  assert.equal(normalizeOpacity(0), 0, 'fully transparent is a legitimate choice');
+  assert.equal(normalizeOpacity(-1), 0);
+  assert.equal(normalizeOpacity(5), MAX_FILL_OPACITY, 'an opaque zone would hide the candles');
+  // Anything unusable falls back rather than producing an invisible or solid block.
+  assert.equal(normalizeOpacity(NaN), DEFAULT_POSITION_STYLE.fillOpacity);
+  assert.equal(normalizeOpacity(undefined), DEFAULT_POSITION_STYLE.fillOpacity);
+  assert.equal(normalizeOpacity('0.3'), DEFAULT_POSITION_STYLE.fillOpacity, 'a string is not a number');
+});
+
+test('styling survives storage, and a block saved before it existed still loads', () => {
+  const original = createDrawing('long', [
+    { time: 0, price: 100 }, { time: 5, price: 90 }, { time: 5, price: 120 },
+  ], { profitColor: 'accent', lossColor: 'ind-3', fillOpacity: 0.4 });
+  const back = parseDrawing(JSON.parse(JSON.stringify(original)));
+  assert.equal(back.profitColor, 'accent');
+  assert.equal(back.lossColor, 'ind-3');
+  assert.equal(back.fillOpacity, 0.4);
+
+  // A block written before these fields existed.
+  const old = parseDrawing({
+    type: 'long',
+    points: [{ time: 0, price: 100 }, { time: 5, price: 90 }, { time: 5, price: 120 }],
+  });
+  assert.equal(old.profitColor, DEFAULT_POSITION_STYLE.profitColor);
+  assert.equal(old.fillOpacity, DEFAULT_POSITION_STYLE.fillOpacity);
+
+  // And one written with nonsense in those fields.
+  const broken = parseDrawing({
+    type: 'long',
+    points: [{ time: 0, price: 100 }, { time: 5, price: 90 }, { time: 5, price: 120 }],
+    profitColor: 42,
+    fillOpacity: 'very',
+  });
+  assert.equal(broken.profitColor, DEFAULT_POSITION_STYLE.profitColor);
+  assert.equal(broken.fillOpacity, DEFAULT_POSITION_STYLE.fillOpacity);
+});
+
+test('every offered zone colour is a token name, not a raw colour', () => {
+  // The renderer resolves these through CSS custom properties, so a literal
+  // hex here would silently fall back to the accent.
+  for (const c of ZONE_COLORS) {
+    assert.match(c.id, /^[a-z0-9-]+$/, `${c.id} must be a token name`);
+    assert.ok(c.label, `${c.id} needs a label`);
+  }
+  assert.ok(ZONE_COLORS.some((c) => c.id === DEFAULT_POSITION_STYLE.profitColor));
+  assert.ok(ZONE_COLORS.some((c) => c.id === DEFAULT_POSITION_STYLE.lossColor));
 });
 
 /* ─── Model ─────────────────────────────────────────────────────────────── */

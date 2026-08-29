@@ -18,7 +18,10 @@
  */
 import { ref, shallowRef } from 'vue';
 import { buildFromGesture, gesturePoints, handleAt, hitTest } from './geometry.js';
-import { createDrawing, moveAnchor, parseDrawing, translateDrawing } from './model.js';
+import {
+  DEFAULT_POSITION_STYLE, createDrawing, isPositionTool, moveAnchor, parseDrawing,
+  translateDrawing,
+} from './model.js';
 
 /**
  * @param {object} deps
@@ -34,6 +37,9 @@ export function useDrawings(deps) {
   const selectedId = ref(null);
   const activeTool = ref('cursor');
   const activeColor = ref('ind-1');
+  /* Zone styling for position blocks. Editing a selected block also updates
+   * this, so the next one drawn keeps the look the user just chose. */
+  const positionStyle = ref({ ...DEFAULT_POSITION_STYLE });
   /** Whether the overlay should currently take pointer events. */
   const overlayActive = ref(false);
   const cursorStyle = ref('default');
@@ -193,6 +199,7 @@ export function useDrawings(deps) {
         type: activeTool.value,
         color: activeColor.value,
         width: 1,
+        ...(isPositionTool(activeTool.value) ? positionStyle.value : {}),
         points: buildFromGesture(activeTool.value, at, at),
       };
       gesture = { mode: 'create', start: at };
@@ -262,7 +269,10 @@ export function useDrawings(deps) {
 
       if (!degenerate) {
         try {
-          const drawing = createDrawing(type, points, { color });
+          const drawing = createDrawing(type, points, {
+            color,
+            ...(isPositionTool(type) ? positionStyle.value : {}),
+          });
           drawings.value = [...drawings.value, drawing];
           selectedId.value = drawing.id;
           save();
@@ -306,6 +316,28 @@ export function useDrawings(deps) {
     if (selectedId.value) {
       drawings.value = drawings.value.map((d) => (
         d.id === selectedId.value ? { ...d, color } : d
+      ));
+      save();
+    }
+  }
+
+  /** The drawing currently selected, or null. */
+  function selectedDrawing() {
+    return drawings.value.find((d) => d.id === selectedId.value) ?? null;
+  }
+
+  /**
+   * Restyles the selected position block and remembers the choice for the next
+   * one. Without the second half, every new block would snap back to the
+   * defaults and the setting would feel broken.
+   */
+  function setPositionStyle(patch) {
+    positionStyle.value = { ...positionStyle.value, ...patch };
+
+    const selected = selectedDrawing();
+    if (selected && isPositionTool(selected.type)) {
+      drawings.value = drawings.value.map((d) => (
+        d.id === selected.id ? { ...d, ...patch } : d
       ));
       save();
     }
@@ -378,6 +410,10 @@ export function useDrawings(deps) {
     onPointerUp,
     cancelGesture,
     updateHover,
+
+    positionStyle,
+    selectedDrawing,
+    setPositionStyle,
 
     setTool,
     setColor,

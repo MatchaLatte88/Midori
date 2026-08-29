@@ -248,9 +248,20 @@ beiden gezogen, muss der andere in der Zeit mitgehen, sonst reißt der Block aus
 
 **Rot und Grün gelten hier — und nur hier.** Der Chart hält Kerzen bewusst in Blau/Weiß
 (Abschnitt 10), damit Grün dem Akzent gehört. Ein Positionsblock ist aber keine Kerze, sondern
-eine Fläche mit eindeutiger Bedeutung: Die Stop-Seite ist immer rot, die Ziel-Seite immer grün.
-Die Farbe folgt der Bedeutung, nicht der Richtung — ein Short liest sich damit genauso herum
-wie ein Long, und Risiko und Chance sind absolute Abstände.
+eine Fläche mit eindeutiger Bedeutung: Die Stop-Seite trägt die Verlustfarbe, die Ziel-Seite die
+Gewinnfarbe. Die Farbe folgt der Bedeutung, nicht der Richtung — ein Short liest sich damit
+genauso herum wie ein Long, und Risiko und Chance sind absolute Abstände.
+
+Beide Farben und die Deckkraft der Flächen liegen **pro Zeichnung** im Datensatz, damit sich
+mehrere geplante Trades auf einem Chart auseinanderhalten lassen. Die Leiste dazu schwebt über
+dem Chart statt in einem Seitenpanel zu sitzen: Eine Farbwahl beurteilt man neben der Fläche,
+die sie ändert, nicht quer über das Fenster hinweg. Die zuletzt gewählte Einstellung gilt auch
+für den nächsten neuen Block — sonst spränge jeder neue Block auf die Vorgabe zurück und die
+Einstellung fühlte sich kaputt an.
+
+Deckkraft wird an genau einer Stelle angewandt (`globalAlpha`) und nie zusätzlich in die Farbe
+gerechnet. Beides zusammen multipliziert sich: Eine mit 0,13 angeforderte Fläche kam bei 0,017
+heraus, ein Fib-Band bei 0,005 — praktisch unsichtbar.
 
 Angezeigt werden Entry, Stop und Ziel mit Prozentabstand sowie Risiko, Chance und das
 Chance-Risiko-Verhältnis. Sitzt der Stop auf dem Entry, ist das Verhältnis `null` statt
@@ -393,9 +404,24 @@ die Figur, der Untergrund bleibt flach und ruhig. Chart-Farben stehen als eigene
 damit ein Theme-Wechsel keine zweite Farbliste pflegen muss.
 
 Klassen `k-panel`, `k-eyebrow`, `k-mono-label`, `k-chip`, `k-note`, `.btn`, `.primary-btn`,
-`.icon-btn` — vor jeder neuen Klasse prüfen, ob eine davon passt. Nativer Fensterrahmen über
-`titleBarOverlay`; dessen Farben in `electron/main.js` müssen mit `--bg`/`--txt` synchron
-bleiben.
+`.icon-btn` — vor jeder neuen Klasse prüfen, ob eine davon passt.
+
+### Hell und Dunkel
+
+Drei Modi statt eines Umschalters: „System" ist eine echte Wahl und nicht das Fehlen einer —
+ohne diesen Zustand löst ein einziger Klick die App dauerhaft von der Einstellung des
+Betriebssystems.
+
+Der Renderer besitzt das Thema, weil nur er weiß, welcher Modus gewählt ist. Das Fenster wird
+mit der Systemeinstellung als bester Schätzung für das erste Bild erzeugt; danach korrigiert der
+Renderer über `ui:set-theme`. **Der native Fensterrahmen wird vom Betriebssystem gezeichnet und
+kann keine CSS-Klasse lesen** — ohne diese Meldung bleibt beim Umschalten auf Dunkel eine helle
+Titelleiste über einer dunklen App stehen. Es gibt bewusst keinen `nativeTheme`-Listener im
+Hauptprozess: eine Wahrheitsquelle, damit sich beide Seiten nicht widersprechen können.
+
+Die Farben des Rahmens stehen in `electron/titlebar.js` — einem eigenen Modul, damit
+Fenstererzeugung und IPC-Handler sie teilen können, ohne einander zu importieren. Sie müssen mit
+`--bg` und `--txt` synchron bleiben.
 
 ## 11. Meilensteine
 

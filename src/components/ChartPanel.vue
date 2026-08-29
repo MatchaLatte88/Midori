@@ -6,6 +6,8 @@ import { VolumeProfilePrimitive } from './chart/volumeProfilePrimitive.js';
 import { DrawingPrimitive } from './chart/drawings/drawingPrimitive.js';
 import { useDrawings } from './chart/drawings/useDrawings.js';
 import DrawingToolbar from './DrawingToolbar.vue';
+import PositionStyleBar from './PositionStyleBar.vue';
+import { isPositionTool } from './chart/drawings/model.js';
 import { datasetFor, session, setError, setVolumeProfile } from '../stores/session.js';
 
 const props = defineProps({
@@ -48,6 +50,13 @@ const draw = useDrawings({
 
 const overlayEl = ref(null);
 const hasSelection = computed(() => draw.selectedId.value !== null);
+
+/* The style bar only makes sense while a position block is selected — for a
+ * trend line there is nothing on it to set. */
+const selectedPosition = computed(() => {
+  const selected = draw.drawings.value.find((d) => d.id === draw.selectedId.value);
+  return selected && isPositionTool(selected.type) ? selected : null;
+});
 
 const TF_MS = {
   '1m': 60_000, '5m': 300_000, '15m': 900_000, '30m': 1_800_000,
@@ -423,6 +432,11 @@ function onToolbarColor(color) {
   syncDrawings();
 }
 
+function onPositionStyle(patch) {
+  draw.setPositionStyle(patch);
+  syncDrawings();
+}
+
 function onToolbarDelete() {
   draw.deleteSelected();
   syncDrawings();
@@ -553,6 +567,14 @@ defineExpose({ reload: loadInitial });
         @pointerup="onOverlayUp"
         @pointercancel="onOverlayUp"
       ></div>
+
+      <PositionStyleBar
+        v-if="selectedPosition"
+        :profit-color="selectedPosition.profitColor"
+        :loss-color="selectedPosition.lossColor"
+        :fill-opacity="selectedPosition.fillOpacity"
+        @update="onPositionStyle"
+      />
 
       <div v-if="status" class="chart-status k-mono-label">{{ status }}</div>
     </div>

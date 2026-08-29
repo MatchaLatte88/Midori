@@ -13,6 +13,7 @@ import {
 } from './data/store/barStore.js';
 import { computeVolumeProfile } from '../shared/indicators/volumeProfile.js';
 import { loadDrawings, saveDrawings } from './data/store/drawingStore.js';
+import { applyTitleBarTheme } from './titlebar.js';
 
 /** Datasets live outside the app bundle so an update never touches them. */
 export function dataDir() {
@@ -72,6 +73,12 @@ export function registerIpc() {
     // have been worth sending in the first place.
     return { ...profile, barCount: bars.length };
   });
+
+  /* The native frame is drawn by the OS and cannot read a CSS class, so the
+   * renderer tells it which theme is in effect. */
+  ipcMain.handle('ui:set-theme', (event, theme) => (
+    applyTitleBarTheme(BrowserWindow.fromWebContents(event.sender), theme)
+  ));
 
   ipcMain.handle('drawings:load', (_e, symbol) => (
     loadDrawings(drawingsDir(), requireString(symbol, 'symbol'))

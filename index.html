@@ -6,11 +6,12 @@
     <title>Midori</title>
     <script>
       // Set the theme class before first paint so the app never flashes light.
+      // Three modes: "system" follows the OS, "light" and "dark" override it.
       (function () {
-        var stored = null;
-        try { stored = localStorage.getItem('midori.theme'); } catch (e) { /* private mode */ }
-        var dark = stored ? stored === 'dark'
-          : window.matchMedia('(prefers-color-scheme: dark)').matches;
+        var mode = 'system';
+        try { mode = localStorage.getItem('midori.theme') || 'system'; } catch (e) { /* private mode */ }
+        var dark = mode === 'dark'
+          || (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
         if (dark) document.documentElement.classList.add('dark');
       })();
     </script>

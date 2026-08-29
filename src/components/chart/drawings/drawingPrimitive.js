@@ -10,7 +10,9 @@
 import {
   FIB_LEVELS, HANDLE_RADIUS, fibPrices, measureStats, positionStats,
 } from './geometry.js';
-import { ENTRY, STOP, TARGET } from './model.js';
+import {
+  DEFAULT_POSITION_STYLE, ENTRY, STOP, TARGET, normalizeOpacity,
+} from './model.js';
 
 function tokenColor(id) {
   const s = getComputedStyle(document.documentElement);
@@ -28,17 +30,21 @@ function chromeColors() {
   };
 }
 
-/** Semi-transparent fill from a solid colour, for zones. */
-function withAlpha(color, alpha) {
-  if (color.startsWith('#') && (color.length === 7 || color.length === 4)) {
-    const hex = color.length === 4
-      ? color.slice(1).split('').map((c) => c + c).join('')
-      : color.slice(1);
-    const n = parseInt(hex, 16);
-    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
-  }
-  // Already a functional colour — let the browser blend it via globalAlpha.
-  return color;
+/**
+ * Fills a rectangle at a given opacity.
+ *
+ * Opacity is applied in exactly one place — globalAlpha — and never also baked
+ * into the colour. Doing both multiplies them: a zone asked for at 0.13 came
+ * out at 0.017, and a fib band at 0.005, which is invisible. Going through
+ * globalAlpha alone also works with any colour notation a token might hold,
+ * not just hex.
+ */
+function fillRectAlpha(ctx, color, alpha, x, y, width, height) {
+  const previous = ctx.globalAlpha;
+  ctx.globalAlpha = previous * alpha;
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, width, height);
+  ctx.globalAlpha = previous;
 }
 
 class DrawingRenderer {
@@ -117,11 +123,7 @@ class DrawingRenderer {
           const y = Math.min(a.y, b.y);
           const w = Math.abs(b.x - a.x);
           const h = Math.abs(b.y - a.y);
-          ctx.globalAlpha *= 0.12;
-          ctx.fillStyle = withAlpha(color, 0.12);
-          ctx.fillRect(x, y, w, h);
-          ctx.globalAlpha /= 0.12;
-          ctx.fillStyle = color;
+          fillRectAlpha(ctx, color, 0.12, x, y, w, h);
           ctx.strokeRect(x, y, w, h);
         }
         break;
@@ -205,10 +207,7 @@ class DrawingRenderer {
     }
 
     // Shade the body of the retracement so the zone reads at a glance.
-    ctx.globalAlpha *= 0.07;
-    ctx.fillStyle = withAlpha(color, 0.07);
-    ctx.fillRect(left, Math.min(a.y, b.y), right - left, Math.abs(b.y - a.y));
-    ctx.globalAlpha /= 0.07;
+    fillRectAlpha(ctx, color, 0.09, left, Math.min(a.y, b.y), right - left, Math.abs(b.y - a.y));
     ctx.fillStyle = color;
   }
 
@@ -217,10 +216,12 @@ class DrawingRenderer {
    * from entry to target, and the numbers that decide whether the trade is
    * worth taking.
    *
-   * Colour follows meaning, not direction: the stop side is always red and the
-   * target side always green, so a short reads the same way round as a long.
-   * This is the one place red and green belong on this chart — they are zones,
-   * not candles, and there is nothing else for them to be confused with.
+   * Colour follows meaning, not direction: the stop side takes the loss colour
+   * and the target side the profit colour, so a short reads the same way round
+   * as a long. The defaults are red and green — the one place they belong on
+   * this chart, since a zone cannot be mistaken for a candle — but both colours
+   * and the fill opacity are per drawing, so several planned trades can be told
+   * apart on one chart.
    */
   _position(ctx, size, drawing, pts) {
     const c = chromeColors();
@@ -238,19 +239,19 @@ class DrawingRenderer {
 
     // Zones. Each spans from the entry line to its own level, so they meet at
     // the entry and never overlap.
+    const opacity = normalizeOpacity(drawing.fillOpacity);
+    const profitColor = tokenColor(drawing.profitColor ?? DEFAULT_POSITION_STYLE.profitColor);
+    const lossColor = tokenColor(drawing.lossColor ?? DEFAULT_POSITION_STYLE.lossColor);
+
     const zone = (yFrom, yTo, color) => {
       const top = Math.min(yFrom, yTo);
       const height = Math.abs(yTo - yFrom);
       if (height < 0.5) return;
-      ctx.fillStyle = withAlpha(color, 0.13);
-      const previous = ctx.globalAlpha;
-      ctx.globalAlpha = previous * 0.13;
-      ctx.fillRect(x, top, width, height);
-      ctx.globalAlpha = previous;
+      fillRectAlpha(ctx, color, opacity, x, top, width, height);
     };
 
-    zone(yEntry, yStop, c.neg);
-    zone(yEntry, yTarget, c.pos);
+    zone(yEntry, yStop, lossColor);
+    zone(yEntry, yTarget, profitColor);
 
     // Level lines.
     const level = (y, color, dashed) => {
@@ -261,8 +262,8 @@ class DrawingRenderer {
       ctx.setLineDash([]);
     };
 
-    level(yStop, c.neg, false);
-    level(yTarget, c.pos, false);
+    level(yStop, lossColor, false);
+    level(yTarget, profitColor, false);
     level(yEntry, c.text, true);
 
     // Labels on each level, inside the block.
@@ -275,9 +276,9 @@ class DrawingRenderer {
     };
 
     const pct = (v) => (v == null ? '—' : `${v.toFixed(2)}%`);
-    label(yTarget, `TP  ${formatPrice(stats.target)}   +${pct(stats.rewardPercent)}`, c.pos);
+    label(yTarget, `TP  ${formatPrice(stats.target)}   +${pct(stats.rewardPercent)}`, profitColor);
     label(yEntry, `Entry  ${formatPrice(stats.entry)}`, c.text);
-    label(yStop, `SL  ${formatPrice(stats.stop)}   −${pct(stats.riskPercent)}`, c.neg);
+    label(yStop, `SL  ${formatPrice(stats.stop)}   −${pct(stats.riskPercent)}`, lossColor);
 
     // Summary box, above or below the block depending on where there is room.
     const rr = stats.rr == null ? '—' : `${stats.rr.toFixed(2)}`;
@@ -292,7 +293,7 @@ class DrawingRenderer {
     const blockBottom = Math.max(yEntry, yStop, yTarget);
     const boxY = blockTop - boxHeight - 5 >= 0 ? blockTop - boxHeight - 5 : blockBottom + 5;
 
-    const tone = stats.rr != null && stats.rr >= 1 ? c.pos : c.neg;
+    const tone = stats.rr != null && stats.rr >= 1 ? profitColor : lossColor;
     ctx.fillStyle = tone;
     ctx.fillRect(x, boxY, boxWidth, boxHeight);
     ctx.fillStyle = c.panel;
@@ -308,10 +309,8 @@ class DrawingRenderer {
     const tone = stats.change >= 0 ? c.pos : c.neg;
 
     ctx.strokeStyle = tone;
-    ctx.fillStyle = withAlpha(tone, 0.10);
-    ctx.globalAlpha *= 0.10;
-    ctx.fillRect(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(b.x - a.x), Math.abs(b.y - a.y));
-    ctx.globalAlpha /= 0.10;
+    fillRectAlpha(ctx, tone, 0.12,
+      Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(b.x - a.x), Math.abs(b.y - a.y));
 
     ctx.setLineDash([4, 3]);
     ctx.strokeStyle = tone;

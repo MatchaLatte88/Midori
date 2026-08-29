@@ -11,6 +11,8 @@ const state = reactive({
   timeframe: '15m',
   loading: false,
   error: null,
+  /** 'system' | 'light' | 'dark' — read from storage below. */
+  themeMode: 'system',
 
   /* Active chart indicators. `uid` exists because the same indicator can be
    * added twice with different periods — a 20 and a 50 SMA are two entries. */
@@ -109,13 +111,60 @@ export function setVolumeProfile(patch) {
   Object.assign(state.volumeProfile, patch);
 }
 
-/** Theme is a UI concern with exactly one switch — it lives here too. */
-export function toggleTheme() {
-  const dark = document.documentElement.classList.toggle('dark');
+/* ─── Theme ─────────────────────────────────────────────────────────────── */
+
+/* Three modes rather than a toggle: "system" is a real choice, not the absence
+ * of one, and without it a single click permanently detaches the app from the
+ * OS setting. */
+export const THEME_MODES = ['system', 'light', 'dark'];
+
+const systemDark = window.matchMedia('(prefers-color-scheme: dark)');
+
+function storedMode() {
   try {
-    localStorage.setItem('midori.theme', dark ? 'dark' : 'light');
+    const mode = localStorage.getItem('midori.theme');
+    return THEME_MODES.includes(mode) ? mode : 'system';
+  } catch (e) {
+    return 'system'; // private mode: the choice just does not persist
+  }
+}
+
+state.themeMode = storedMode();
+
+/** Which of light/dark the current mode actually resolves to. */
+export function effectiveTheme() {
+  if (state.themeMode === 'system') return systemDark.matches ? 'dark' : 'light';
+  return state.themeMode;
+}
+
+/* The CSS side is one class, but the native window frame is drawn by the OS and
+ * has to be told separately — otherwise switching to dark leaves a bright title
+ * bar sitting on top of a dark app. */
+function applyTheme() {
+  const theme = effectiveTheme();
+  document.documentElement.classList.toggle('dark', theme === 'dark');
+  window.midori?.ui?.setTheme(theme).catch(setError);
+}
+
+export function setThemeMode(mode) {
+  if (!THEME_MODES.includes(mode)) {
+    throw new Error(`Unknown theme mode "${mode}". Known: ${THEME_MODES.join(', ')}`);
+  }
+  state.themeMode = mode;
+  try {
+    localStorage.setItem('midori.theme', mode);
   } catch (e) { /* private mode — the class is still applied */ }
-  return dark;
+  applyTheme();
+}
+
+// While following the system, a change out there has to reach the app.
+systemDark.addEventListener('change', () => {
+  if (state.themeMode === 'system') applyTheme();
+});
+
+/** Pushes the startup theme to the native frame, which knows nothing yet. */
+export function initTheme() {
+  applyTheme();
 }
 
 export function isDark() {

@@ -93,6 +93,35 @@ export const DRAWING_COLORS = [
   { id: 'accent', label: 'Midori' },
 ];
 
+/* Zone colours for the position tools. The semantic pair leads, because that is
+ * what almost everyone wants; the rest are there for telling several planned
+ * trades apart on one chart. */
+export const ZONE_COLORS = [
+  { id: 'pos', label: 'Green' },
+  { id: 'neg', label: 'Red' },
+  { id: 'accent', label: 'Midori' },
+  { id: 'ind-1', label: 'Amber' },
+  { id: 'ind-2', label: 'Violet' },
+  { id: 'ind-3', label: 'Pink' },
+  { id: 'ind-4', label: 'Orange' },
+  { id: 'ind-5', label: 'Slate' },
+];
+
+export const DEFAULT_POSITION_STYLE = {
+  profitColor: 'pos',
+  lossColor: 'neg',
+  /** Zone fill opacity, 0..1. */
+  fillOpacity: 0.13,
+};
+
+export const MAX_FILL_OPACITY = 0.6;
+
+/** Clamps a stored opacity into range; anything unusable falls back. */
+export function normalizeOpacity(value) {
+  if (!Number.isFinite(value)) return DEFAULT_POSITION_STYLE.fillOpacity;
+  return Math.min(MAX_FILL_OPACITY, Math.max(0, value));
+}
+
 let nextLocalId = 1;
 
 /** Builds a drawing. Ids are local and only need to be unique per symbol. */
@@ -110,7 +139,7 @@ export function createDrawing(type, points, options = {}) {
     }
   }
 
-  return {
+  const drawing = {
     id: `d${Date.now().toString(36)}${nextLocalId++}`,
     type,
     points: points.map((p) => ({ time: p.time, price: p.price })),
@@ -118,6 +147,16 @@ export function createDrawing(type, points, options = {}) {
     width: options.width ?? 1,
     createdAt: Date.now(),
   };
+
+  // Zone styling only means something on a position block; other types would
+  // just carry dead fields around.
+  if (isPositionTool(type)) {
+    drawing.profitColor = options.profitColor ?? DEFAULT_POSITION_STYLE.profitColor;
+    drawing.lossColor = options.lossColor ?? DEFAULT_POSITION_STYLE.lossColor;
+    drawing.fillOpacity = normalizeOpacity(options.fillOpacity);
+  }
+
+  return drawing;
 }
 
 /**
@@ -138,7 +177,7 @@ export function parseDrawing(raw) {
     points.push({ time: p.time, price: p.price });
   }
 
-  return {
+  const drawing = {
     id: typeof raw.id === 'string' && raw.id ? raw.id : `d${Date.now().toString(36)}${nextLocalId++}`,
     type: raw.type,
     points,
@@ -146,6 +185,18 @@ export function parseDrawing(raw) {
     width: Number.isFinite(raw.width) ? raw.width : 1,
     createdAt: Number.isFinite(raw.createdAt) ? raw.createdAt : Date.now(),
   };
+
+  if (isPositionTool(raw.type)) {
+    // Styling written before these fields existed, or written badly, falls back
+    // to the defaults rather than costing the drawing.
+    drawing.profitColor = typeof raw.profitColor === 'string'
+      ? raw.profitColor : DEFAULT_POSITION_STYLE.profitColor;
+    drawing.lossColor = typeof raw.lossColor === 'string'
+      ? raw.lossColor : DEFAULT_POSITION_STYLE.lossColor;
+    drawing.fillOpacity = normalizeOpacity(raw.fillOpacity);
+  }
+
+  return drawing;
 }
 
 /** Moves every anchor of a drawing by a delta in market coordinates. */

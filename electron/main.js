@@ -2,16 +2,11 @@ import { app, BrowserWindow, nativeTheme } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { registerIpc } from './ipc.js';
+import { TITLEBAR, TITLEBAR_HEIGHT } from './titlebar.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEV_URL = 'http://localhost:5300';
 const isDev = !app.isPackaged;
-
-/** Title bar colors mirror --bg / --txt from tokens.css. Keep them in sync. */
-const TITLEBAR = {
-  light: { color: '#f8fafc', symbolColor: '#0f172a' },
-  dark: { color: '#070d16', symbolColor: '#eef2f7' },
-};
 
 let win = null;
 
@@ -26,7 +21,7 @@ function createWindow() {
     show: false,
     backgroundColor: TITLEBAR[theme].color,
     titleBarStyle: 'hidden',
-    titleBarOverlay: { ...TITLEBAR[theme], height: 40 },
+    titleBarOverlay: { ...TITLEBAR[theme], height: TITLEBAR_HEIGHT },
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -59,11 +54,12 @@ function createWindow() {
   }
 }
 
-nativeTheme.on('updated', () => {
-  if (!win || win.isDestroyed()) return;
-  const theme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
-  win.setTitleBarOverlay({ ...TITLEBAR[theme], height: 40 });
-});
+/* The renderer owns the theme, because only it knows whether the user chose
+ * light, dark, or to follow the system. The window is created with the OS
+ * setting as the best guess for the first frame; the renderer corrects it on
+ * mount and on every change after that, including a system change while the
+ * mode is "system". One source of truth, so the two cannot disagree — which is
+ * why there is no nativeTheme listener here. */
 
 app.whenReady().then(() => {
   registerIpc();

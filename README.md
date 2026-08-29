@@ -109,7 +109,16 @@ danach springt die Leiste zurueck auf den Cursor.
 **Long/Short-Position**: vom Entry zum Stop ziehen. Das Ziel setzt sich auf 2R und ist danach
 frei verschiebbar wie die anderen beiden Anker. Die Stop-Seite ist rot, die Ziel-Seite gruen,
 und der Block zeigt Entry, SL, TP mit Prozentabstand sowie Risiko, Chance und
-Chance-Risiko-Verhaeltnis. Mit dem Cursor lassen sich Zeichnungen anklicken, verschieben und an
+Chance-Risiko-Verhaeltnis.
+
+Ist ein Block ausgewaehlt, erscheint oben links am Chart eine Leiste fuer **Gewinnfarbe,
+Verlustfarbe und Deckkraft**. Die Einstellung gehoert zur einzelnen Zeichnung und gilt zugleich
+als Vorgabe fuer den naechsten Block.
+
+## Hell und Dunkel
+
+Oben rechts in der Titelleiste: Hell, Dunkel oder dem System folgen. Die Wahl gilt fuer die
+gesamte App einschliesslich des nativen Fensterrahmens und bleibt ueber Neustarts erhalten. Mit dem Cursor lassen sich Zeichnungen anklicken, verschieben und an
 ihren Ankerpunkten anfassen; `Entf` loescht die Auswahl, `Esc` bricht ab. Die Farbfelder
 faerben die Auswahl um, wenn eine besteht.
 
