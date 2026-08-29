@@ -96,7 +96,20 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 0 12px;
+
+  /* The window's minimise, maximise and close buttons are drawn by the OS as an
+     overlay on top of the page, so anything the app puts underneath them is
+     visible but not clickable. Electron exposes the area left over for the app
+     as env(titlebar-area-*) — measured here: 1569 of 1706 px, so the controls
+     take 137. Reserving the difference keeps app controls clear of them at any
+     window width and on any DPI, instead of hardcoding a number that is right
+     on one machine.
+
+     The fallback covers a build without titleBarOverlay (macOS, Linux); there
+     the controls sit at the left, which env(titlebar-area-x) accounts for. */
+  padding-left: calc(env(titlebar-area-x, 0px) + 12px);
+  padding-right: calc(100% - env(titlebar-area-width, calc(100% - 140px))
+    - env(titlebar-area-x, 0px) + 12px);
   background: var(--topbar-bg);
   border-bottom: 1px solid var(--line);
   box-shadow: var(--topbar-shadow);
