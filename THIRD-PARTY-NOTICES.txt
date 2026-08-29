@@ -1,0 +1,92 @@
+Third-party notices for Midori
+==============================
+
+Midori bundles the components listed below. Full licence texts are shipped with
+each package inside node_modules/ and are linked here by their canonical URL.
+
+Midori does not distribute market data. All price data is downloaded by the
+user, on their own machine, from sources they choose, and remains subject to
+those sources' own terms.
+
+
+Lightweight Charts™ — TradingView, Inc.
+---------------------------------------
+    Copyright 2023 TradingView, Inc.
+    Licensed under the Apache License, Version 2.0
+    https://www.apache.org/licenses/LICENSE-2.0
+    https://github.com/tradingview/lightweight-charts
+
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+
+    Charts in Midori display the TradingView attribution logo, as the licence
+    requires. The `attributionLogo` option is deliberately left enabled.
+
+    Note: Midori uses Lightweight Charts, which is open source under Apache 2.0.
+    It does not use, and is not derived from, the TradingView Charting Library,
+    which carries a separate licence. The drawing tools in Midori are its own
+    implementation.
+
+
+Vue — Evan You and Vue contributors
+-----------------------------------
+    MIT License
+    https://github.com/vuejs/core/blob/main/LICENSE
+
+
+Electron — OpenJS Foundation and contributors
+---------------------------------------------
+    MIT License
+    https://github.com/electron/electron/blob/main/LICENSE
+
+    Electron bundles Chromium and Node.js, which carry their own licences.
+    See the licence files shipped in the Electron distribution.
+
+
+Vite — Evan You and Vite contributors
+-------------------------------------
+    MIT License
+    https://github.com/vitejs/vite/blob/main/LICENSE
+
+@vitejs/plugin-vue
+    MIT License
+    https://github.com/vitejs/vite-plugin-vue/blob/main/LICENSE
+
+
+fflate — Arjun Barrett
+----------------------
+    MIT License
+    https://github.com/101arrowz/fflate/blob/master/LICENSE
+
+
+Fonts
+-----
+All fonts are self-hosted; Midori makes no external font requests.
+
+    Inter — Rasmus Andersson
+    SIL Open Font License 1.1
+    https://github.com/rsms/inter/blob/master/LICENSE.txt
+
+    Plus Jakarta Sans — Tokotype
+    SIL Open Font License 1.1
+    https://github.com/tokotype/PlusJakartaSans/blob/master/OFL.txt
+
+    DM Mono — Colophon Foundry, Jonathan Pinhorn
+    SIL Open Font License 1.1
+    https://github.com/googlefonts/dm-mono/blob/main/OFL.txt
+
+
+Data sources
+------------
+Binance publishes historical market data at https://data.binance.vision under
+its own terms. Midori downloads from it at the user's request and does not
+redistribute it.

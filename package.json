@@ -1,0 +1,27 @@
+{
+  "name": "project-midori",
+  "version": "0.1.0",
+  "description": "Midori — local backtesting and trading-bot workbench",
+  "private": true,
+  "type": "module",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "start": "electron .",
+    "app": "concurrently -k -n VITE,ELECTRON -c cyan,green \"vite\" \"wait-on tcp:5300 && electron .\"",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "fflate": "^0.8.2",
+    "lightweight-charts": "^5.0.9",
+    "vue": "^3.5.41"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.8",
+    "concurrently": "^10.0.5",
+    "electron": "^43.4.1",
+    "vite": "^8.2.2",
+    "wait-on": "^9.1.0"
+  }
+}

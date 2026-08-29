@@ -1,0 +1,225 @@
+@import './fonts.css';
+@import './tokens.css';
+
+/* ─── Reset ──────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+html, body, #app {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+body {
+  background-color: var(--bg);
+  color: var(--txt);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.3s, color 0.3s;
+}
+button { font: inherit; color: inherit; }
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ─── Ambient blobs (fixed, behind everything) ───────────────────────────── */
+.ambient {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse 900px 700px at 12% -8%, var(--blob1-clr), transparent 60%),
+    radial-gradient(ellipse 760px 620px at 104% 104%, var(--blob2-clr), transparent 60%);
+  transition: background 0.3s;
+}
+
+/* ─── Panel: gradient surface (no backdrop blur) ─────────────────────────── */
+.k-panel {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: linear-gradient(160deg, var(--panel-a), var(--panel-b));
+  box-shadow: var(--panel-shadow);
+  transition: border-color 0.25s;
+}
+
+/* ─── Typography roles ───────────────────────────────────────────────────── */
+.k-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.k-eyebrow::before {
+  content: '';
+  width: 18px;
+  height: 1px;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+.k-mono-label {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 9px;
+  font-weight: 400;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--sec);
+}
+.k-mono-meta {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--sec);
+}
+.k-num {
+  font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Chip ───────────────────────────────────────────────────────────────── */
+.k-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border: 1px solid var(--accent-brd);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+/* ─── Note: ember-accented callout, max one per view ─────────────────────── */
+.k-note {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--ember);
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--sec);
+  background: linear-gradient(160deg, var(--panel-a), var(--panel-b));
+}
+.k-note b {
+  display: block;
+  margin-bottom: 2px;
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ember);
+}
+
+/* ─── Buttons ────────────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 120ms, border-color 120ms, background 120ms;
+}
+.btn:hover:not(:disabled) { opacity: 0.8; }
+.btn:disabled { opacity: 0.4; cursor: default; }
+.btn--sm { min-height: 28px; padding: 0 10px; font-size: 11px; }
+.btn--default { border: 1px solid var(--brd); background: var(--glass); color: var(--txt); }
+.btn--accent  { border: 1px solid var(--accent-brd); background: var(--accent-bg); color: var(--accent); }
+.btn--accent:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  border-color: var(--accent);
+  opacity: 1;
+}
+.btn--danger { border: 1px solid rgba(239,68,68,0.3); background: rgba(239,68,68,0.08); color: #ef4444; }
+
+.primary-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 16px;
+  border-radius: 999px;
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  background: var(--accent);
+  color: var(--btn-primary-fg);
+  border: 1px solid var(--accent);
+  cursor: pointer;
+  transition: opacity 0.15s, box-shadow 0.2s;
+}
+.primary-btn:hover:not(:disabled) {
+  opacity: 0.92;
+  box-shadow: 0 5px 18px color-mix(in srgb, var(--accent) 32%, transparent);
+}
+.primary-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Icon button — square sibling of .btn--default, used across the chrome */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--sec);
+  cursor: pointer;
+  transition: color 120ms, background 120ms, border-color 120ms;
+}
+.icon-btn:hover:not(:disabled) {
+  color: var(--txt);
+  background: var(--glass);
+  border-color: var(--brd);
+}
+.icon-btn:disabled { opacity: 0.35; cursor: default; }
+.icon-btn.is-active { color: var(--accent); background: var(--accent-bg); border-color: var(--accent-brd); }
+.icon-btn svg { width: 16px; height: 16px; stroke-width: 1.5; }
+
+/* ─── Divider ────────────────────────────────────────────────────────────── */
+.k-divider { width: 1px; height: 18px; background: var(--line); flex-shrink: 0; }
+
+/* ─── Scrollbars ─────────────────────────────────────────────────────────── */
+* { scrollbar-width: thin; scrollbar-color: var(--brd) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--sec) 35%, transparent);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--sec) 55%, transparent); background-clip: content-box; }
+
+/* ─── Animation ──────────────────────────────────────────────────────────── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.anim-fade-up { animation: fadeUp 0.35s ease both; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

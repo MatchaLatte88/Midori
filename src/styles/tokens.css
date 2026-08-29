@@ -1,0 +1,184 @@
+/* ─── Midori design tokens ────────────────────────────────────────────────
+   Design language: "Living Data" — inherited from the Katsumii app.
+   Warm ink + one disciplined accent on a calm ground, gradient panels
+   (no glass blur), mono labels for meta text.
+
+   Two deliberate departures from the Acrobar/Katsumii palette:
+
+   1. The accent is Midori green. Because the accent is green, profit does
+      NOT get a second green — `--pos` IS the accent. Loss keeps the single
+      red alarm tone. Two greens side by side would read as noise.
+
+   2. Candles are blue/white, never green/red. That frees green entirely for
+      interaction and branding, and it keeps the chart readable for the ~8%
+      of men with red-green deficiency. Up is light, down is blue — in light
+      mode "light" becomes a hollow candle with an ink outline, because white
+      on a white chart is invisible.
+
+   Accent is a single pair of tokens (--accent / --accent-*). Swapping the
+   product accent means editing those lines only. */
+
+/* ─── Light mode (default) ───────────────────────────────────────────────── */
+:root {
+  --bg:             #f8fafc;
+  --txt:            #0f172a;
+  --sec:            #64748b;
+  --faint:          #94a3b8;
+  --brd:            rgba(15, 23, 42, 0.10);
+  --line:           rgba(15, 23, 42, 0.10);
+  --line-soft:      rgba(15, 23, 42, 0.055);
+
+  /* Panels — gradient surfaces, semi transparent so the ambient glow reads through */
+  --panel-a:        rgba(255, 255, 255, 0.92);
+  --panel-b:        rgba(255, 255, 255, 0.72);
+  --panel-shadow:   0 10px 30px rgba(15, 23, 42, 0.06);
+  --glass:          rgba(255, 255, 255, 0.80);
+  --glass-brd:      rgba(255, 255, 255, 0.96);
+
+  /* Chrome surfaces */
+  --topbar-bg:      var(--glass);
+  --topbar-shadow:  0 6px 22px rgba(80,100,200,0.10), 0 1px 6px rgba(0,0,0,0.05), inset 0 1px 0 rgba(255,255,255,1);
+  --rail-bg:        #f3f5fa;
+  --tile-bg:        #ffffff;
+
+  /* Semantics — profit is the accent itself, loss is the only alarm tone */
+  --pos:            #059669;
+  --neg:            #dc2626;
+  --ember:          #d4531d;
+
+  /* Accent — Midori green, light mode */
+  --accent:         #059669;
+  --accent-bg:      rgba(5, 150, 105, 0.08);
+  --accent-brd:     rgba(5, 150, 105, 0.22);
+  --accent-glow:    rgba(5, 150, 105, 0.14);
+  --btn-primary-fg: #ffffff;
+
+  /* Ambient accent blobs behind the app chrome */
+  --blob1-clr:      color-mix(in srgb, var(--accent) 11%, transparent);
+  --blob2-clr:      color-mix(in srgb, var(--accent)  9%, transparent);
+
+  --radius:         16px;
+  --radius-md:      10px;
+  --radius-sm:      8px;
+
+  /* Native window controls (Electron titleBarOverlay mirrors these) */
+  --titlebar-height: 40px;
+  color-scheme: light;
+}
+
+/* ─── Chart surface, light ───────────────────────────────────────────────────
+   The chart is the one place the Living Data gradient does NOT apply. Price
+   action is the figure; the surface behind it stays flat and quiet so it
+   never competes. */
+:root {
+  --chart-bg:       #ffffff;
+  --chart-grid:     rgba(15, 23, 42, 0.055);
+  --chart-text:     #64748b;
+  --chart-brd:      rgba(15, 23, 42, 0.10);
+  --chart-cross:    rgba(15, 23, 42, 0.35);
+
+  /* Up: hollow — white body, ink outline (white-on-white would vanish) */
+  --candle-up-body:   #ffffff;
+  --candle-up-brd:    #334155;
+  --candle-up-wick:   #334155;
+  /* Down: solid blue */
+  --candle-down-body: #2563eb;
+  --candle-down-brd:  #2563eb;
+  --candle-down-wick: #2563eb;
+
+  --vol-up:         rgba(51, 65, 85, 0.28);
+  --vol-down:       rgba(37, 99, 235, 0.28);
+
+  /* Volume profile — the accent marks the point of control, because that is
+     the one level the eye should find first. */
+  --vp-bar:         rgba(71, 85, 105, 0.22);
+  --vp-bar-va:      rgba(37, 99, 235, 0.34);
+  --vp-poc:         #059669;
+  --vp-va-edge:     rgba(37, 99, 235, 0.45);
+
+  /* Buy/sell split — same logic as the candles: light is the buyer, blue the
+     seller. One vocabulary for direction across the whole chart. */
+  --vp-buy:         rgba(51, 65, 85, 0.55);
+  --vp-sell:        rgba(37, 99, 235, 0.55);
+
+  /* Indicator lines — deliberately none of them blue (candles) or green
+     (accent), so an overlay is never mistaken for price or for a control. */
+  --ind-1:          #d97706;
+  --ind-2:          #7c3aed;
+  --ind-3:          #db2777;
+  --ind-4:          #ea580c;
+  --ind-5:          #475569;
+}
+
+/* ─── Dark mode — base tone "Ink" ────────────────────────────────────────── */
+html.dark {
+  --bg:             #070d16;
+  --txt:            #eef2f7;
+  --sec:            #94a3b8;
+  --faint:          #64748b;
+  --brd:            rgba(226, 232, 240, 0.08);
+  --line:           rgba(226, 232, 240, 0.08);
+  --line-soft:      rgba(226, 232, 240, 0.05);
+
+  --panel-a:        rgba(30, 41, 59, 0.62);
+  --panel-b:        rgba(30, 41, 59, 0.34);
+  --panel-shadow:   0 12px 34px rgba(0, 0, 0, 0.35);
+  --glass:          rgba(255, 255, 255, 0.04);
+  --glass-brd:      rgba(255, 255, 255, 0.10);
+
+  --topbar-bg:      var(--glass);
+  --topbar-shadow:  0 6px 22px rgba(0,0,0,0.35), 0 1px 6px rgba(0,0,0,0.20), inset 0 1px 0 rgba(255,255,255,0.08);
+  --rail-bg:        #0c1422;
+  --tile-bg:        #121c2e;
+
+  --pos:            #34d399;
+  --neg:            #f87171;
+  --ember:          #ff7847;
+
+  /* Accent — Midori green, dark mode */
+  --accent:         #34d399;
+  --accent-bg:      rgba(52, 211, 153, 0.09);
+  --accent-brd:     rgba(52, 211, 153, 0.25);
+  --accent-glow:    rgba(52, 211, 153, 0.16);
+  --btn-primary-fg: #04231a;
+
+  --blob1-clr:      color-mix(in srgb, var(--accent) 14%, transparent);
+  --blob2-clr:      color-mix(in srgb, var(--accent) 11%, transparent);
+
+  color-scheme: dark;
+}
+
+/* ─── Chart surface, dark ────────────────────────────────────────────────── */
+html.dark {
+  --chart-bg:       #080f1a;
+  --chart-grid:     rgba(226, 232, 240, 0.055);
+  --chart-text:     #94a3b8;
+  --chart-brd:      rgba(226, 232, 240, 0.08);
+  --chart-cross:    rgba(226, 232, 240, 0.40);
+
+  /* Up: solid near-white — on ink it needs no outline to read */
+  --candle-up-body:   #e2e8f0;
+  --candle-up-brd:    #e2e8f0;
+  --candle-up-wick:   #cbd5e1;
+  /* Down: solid blue */
+  --candle-down-body: #3b82f6;
+  --candle-down-brd:  #3b82f6;
+  --candle-down-wick: #3b82f6;
+
+  --vol-up:         rgba(226, 232, 240, 0.22);
+  --vol-down:       rgba(59, 130, 246, 0.28);
+
+  --vp-bar:         rgba(148, 163, 184, 0.20);
+  --vp-bar-va:      rgba(59, 130, 246, 0.38);
+  --vp-poc:         #34d399;
+  --vp-va-edge:     rgba(59, 130, 246, 0.55);
+
+  --vp-buy:         rgba(226, 232, 240, 0.55);
+  --vp-sell:        rgba(59, 130, 246, 0.60);
+
+  --ind-1:          #fbbf24;
+  --ind-2:          #a78bfa;
+  --ind-3:          #f472b6;
+  --ind-4:          #fb923c;
+  --ind-5:          #94a3b8;
+}
