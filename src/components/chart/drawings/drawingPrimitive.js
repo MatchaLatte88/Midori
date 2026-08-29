@@ -267,45 +267,40 @@ class DrawingRenderer {
     level(yTarget, profitColor, false);
     level(yEntry, c.text, true);
 
-    // Labels on each level, inside the block.
+    /* Everything is written inside the block, on the side facing the entry.
+     * Nothing hangs off the edges, so a label cannot be clipped by the pane or
+     * covered by anything the block itself draws. */
     ctx.font = '10px "DM Mono", ui-monospace, monospace';
-    ctx.textBaseline = 'bottom';
 
-    const label = (y, text, color) => {
+    const label = (y, side, text, color) => {
       ctx.fillStyle = color;
-      ctx.fillText(text, x + 5, y - 3);
+      ctx.textBaseline = side === 'above' ? 'bottom' : 'top';
+      ctx.fillText(text, x + 5, side === 'above' ? y - 3 : y + 3);
     };
 
+    // Which way the target lies decides which side of each line is "inwards".
+    const targetAbove = yTarget < yEntry;
     const pct = (v) => (v == null ? '—' : `${v.toFixed(2)}%`);
-    label(yTarget, `TP  ${formatPrice(stats.target)}   +${pct(stats.rewardPercent)}`, profitColor);
-    label(yEntry, `Entry  ${formatPrice(stats.entry)}`, c.text);
-    label(yStop, `SL  ${formatPrice(stats.stop)}   −${pct(stats.riskPercent)}`, lossColor);
 
-    // Summary box, above or below the block depending on where there is room.
-    /* The direction is read off the anchors, never stored: dragging the target
-     * across the entry turns a long into a short, and the label has to follow
-     * the picture rather than what the block was called when it was drawn. */
+    // Target and stop are labelled towards the middle of their own zone.
+    label(yTarget, targetAbove ? 'below' : 'above',
+      `TP  ${formatPrice(stats.target)}   +${pct(stats.rewardPercent)}`, profitColor);
+    label(yStop, targetAbove ? 'above' : 'below',
+      `SL  ${formatPrice(stats.stop)}   −${pct(stats.riskPercent)}`, lossColor);
+
+    // The entry sits on the reward side, leaving the risk side free.
+    label(yEntry, targetAbove ? 'above' : 'below', `Entry  ${formatPrice(stats.entry)}`, c.text);
+
+    /* Direction and reward-to-risk go into the risk zone, right against the
+     * entry line. The direction is read off the anchors, never stored: dragging
+     * the target across the entry turns a long into a short, and the label has
+     * to follow the picture rather than what the block was called when it was
+     * drawn. */
     const direction = positionDirection(stats.entry, stats.stop, stats.target);
     const name = direction === 'long' ? 'LONG' : direction === 'short' ? 'SHORT' : 'POSITION';
+    const rr = stats.rr == null ? '—' : stats.rr.toFixed(2);
 
-    const rr = stats.rr == null ? '—' : `${stats.rr.toFixed(2)}`;
-    const lines = [
-      `${name}   R:R ${rr}`,
-      `risk ${formatPrice(stats.risk)}   reward ${formatPrice(stats.reward)}`,
-    ];
-
-    const boxWidth = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 12;
-    const boxHeight = lines.length * 13 + 7;
-    const blockTop = Math.min(yEntry, yStop, yTarget);
-    const blockBottom = Math.max(yEntry, yStop, yTarget);
-    const boxY = blockTop - boxHeight - 5 >= 0 ? blockTop - boxHeight - 5 : blockBottom + 5;
-
-    const tone = stats.rr != null && stats.rr >= 1 ? profitColor : lossColor;
-    ctx.fillStyle = tone;
-    ctx.fillRect(x, boxY, boxWidth, boxHeight);
-    ctx.fillStyle = c.panel;
-    ctx.textBaseline = 'top';
-    lines.forEach((line, i) => ctx.fillText(line, x + 6, boxY + 4 + i * 13));
+    label(yEntry, targetAbove ? 'below' : 'above', `${name}   R:R ${rr}`, c.text);
   }
 
   _measure(ctx, drawing, a, b) {

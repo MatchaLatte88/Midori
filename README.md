@@ -122,8 +122,9 @@ danach springt die Leiste zurueck auf den Cursor.
 
 **Position**: vom Entry zum Stop ziehen — nach unten ergibt einen Long, nach oben einen Short.
 Das Ziel setzt sich auf 2R und ist danach frei verschiebbar wie die anderen beiden Anker. Die
-Stop-Seite ist rot, die Ziel-Seite gruen, und der Block zeigt Entry, SL, TP mit Prozentabstand
-sowie Risiko, Chance und Chance-Risiko-Verhaeltnis.
+Stop-Seite ist rot, die Ziel-Seite gruen. Beschriftet wird innerhalb des Blocks: TP und SL mit
+Preis und Prozentabstand, der Entry auf der Chancen-Seite, und Richtung plus
+Chance-Risiko-Verhaeltnis direkt an der Entry-Linie in der roten Zone.
 
 Es gibt bewusst nur *ein* Positionswerkzeug: Zieht man das Ziel ueber den Entry, wird aus dem
 Long ein Short, und die Beschriftung folgt dem Bild. Die Richtung wird nicht gespeichert,

@@ -279,9 +279,14 @@ Deckkraft wird an genau einer Stelle angewandt (`globalAlpha`) und nie zusätzli
 gerechnet. Beides zusammen multipliziert sich: Eine mit 0,13 angeforderte Fläche kam bei 0,017
 heraus, ein Fib-Band bei 0,005 — praktisch unsichtbar.
 
-Angezeigt werden Entry, Stop und Ziel mit Prozentabstand sowie Risiko, Chance und das
-Chance-Risiko-Verhältnis. Sitzt der Stop auf dem Entry, ist das Verhältnis `null` statt
-unendlich — es gibt dann kein Risiko, durch das sich teilen ließe.
+Beschriftet wird ausschließlich **innerhalb** des Blocks, jeweils auf der zum Entry zeigenden
+Seite: Ziel und Stop mit Preis und Prozentabstand, der Entry auf der Chancen-Seite, und
+Richtung samt Chance-Risiko-Verhältnis direkt an der Entry-Linie in der Risiko-Zone. So hängt
+nichts über den Rand hinaus und nichts verdeckt etwas anderes — eine frühere Zusammenfassung
+über dem Block tat genau das und verbarg den Prozentwert des Ziels.
+
+Sitzt der Stop auf dem Entry, ist das Verhältnis `null` statt unendlich — es gibt dann kein
+Risiko, durch das sich teilen ließe.
 
 ### Ankerpunkte sind Markt-, keine Bildschirmkoordinaten
 
