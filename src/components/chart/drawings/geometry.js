@@ -143,6 +143,7 @@ export function hitTest(type, pts, at, size) {
       });
     }
 
+    case 'position':
     case 'long':
     case 'short': {
       if (pts.length < 3) return false;
@@ -184,6 +185,9 @@ export function pointsRequired(type) {
     case 'fib':
     case 'measure':
       return 2;
+    case 'position':
+    // 'long' and 'short' are the pre-0.1.1 names for the same shape; kept so
+    // drawings saved under them still load.
     case 'long':
     case 'short':
       // entry, stop and target — three prices, two of which share a time.
@@ -191,6 +195,26 @@ export function pointsRequired(type) {
     default:
       throw new Error(`pointsRequired: unknown drawing type "${type}"`);
   }
+}
+
+/**
+ * Which way a position block points, derived from where the target sits
+ * relative to the entry.
+ *
+ * There is deliberately no stored direction. The anchors are draggable, so a
+ * block drawn as a long becomes a short the moment its target is pulled below
+ * the entry — a stored flag would keep claiming otherwise. Reading it off the
+ * geometry means the label can never contradict the picture.
+ *
+ * Falls back to the stop when the target sits exactly on the entry, and returns
+ * null only when all three prices coincide.
+ */
+export function positionDirection(entry, stop, target) {
+  if (target > entry) return 'long';
+  if (target < entry) return 'short';
+  if (stop < entry) return 'long';
+  if (stop > entry) return 'short';
+  return null;
 }
 
 /** Reward-to-risk a fresh position tool starts with. */
@@ -203,9 +227,12 @@ export const DEFAULT_RR = 2;
  * gives entry and stop, and the target is placed at DEFAULT_RR times the risk on
  * the other side of the entry — the way a trader sizes a trade in the first
  * place. All three stay adjustable afterwards.
+ *
+ * Dragging down from the entry therefore produces a long and dragging up a
+ * short, without the tool needing to be told which was meant.
  */
 export function buildFromGesture(type, start, end) {
-  if (type !== 'long' && type !== 'short') {
+  if (pointsRequired(type) !== 3) {
     return pointsRequired(type) === 1 ? [start] : [start, end];
   }
 
@@ -219,7 +246,7 @@ export function buildFromGesture(type, start, end) {
 
 /** How many points the drag itself collects, before buildFromGesture. */
 export function gesturePoints(type) {
-  return type === 'long' || type === 'short' ? 2 : pointsRequired(type);
+  return pointsRequired(type) === 3 ? 2 : pointsRequired(type);
 }
 
 /**

@@ -120,10 +120,14 @@ Links am Chart: Trendlinie, Strahl, horizontale und vertikale Linie, Rechteck, F
 Retracement, Messwerkzeug sowie Long- und Short-Position. Werkzeug waehlen, ziehen, fertig —
 danach springt die Leiste zurueck auf den Cursor.
 
-**Long/Short-Position**: vom Entry zum Stop ziehen. Das Ziel setzt sich auf 2R und ist danach
-frei verschiebbar wie die anderen beiden Anker. Die Stop-Seite ist rot, die Ziel-Seite gruen,
-und der Block zeigt Entry, SL, TP mit Prozentabstand sowie Risiko, Chance und
-Chance-Risiko-Verhaeltnis.
+**Position**: vom Entry zum Stop ziehen — nach unten ergibt einen Long, nach oben einen Short.
+Das Ziel setzt sich auf 2R und ist danach frei verschiebbar wie die anderen beiden Anker. Die
+Stop-Seite ist rot, die Ziel-Seite gruen, und der Block zeigt Entry, SL, TP mit Prozentabstand
+sowie Risiko, Chance und Chance-Risiko-Verhaeltnis.
+
+Es gibt bewusst nur *ein* Positionswerkzeug: Zieht man das Ziel ueber den Entry, wird aus dem
+Long ein Short, und die Beschriftung folgt dem Bild. Die Richtung wird nicht gespeichert,
+sondern aus den Ankern gelesen.
 
 Ist ein Block ausgewaehlt, erscheint oben links am Chart eine Leiste fuer **Gewinnfarbe,
 Verlustfarbe und Deckkraft**. Die Einstellung gehoert zur einzelnen Zeichnung und gilt zugleich

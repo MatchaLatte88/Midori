@@ -4,12 +4,12 @@ import assert from 'node:assert/strict';
 import {
   FIB_LEVELS, HIT_TOLERANCE, buildFromGesture, distanceToRay, distanceToRectEdge,
   distanceToSegment, fibPrices, gesturePoints, handleAt, hitTest, isInsideRect,
-  measureStats, pointsRequired, positionStats,
+  measureStats, pointsRequired, positionDirection, positionStats,
 } from '../src/components/chart/drawings/geometry.js';
 import {
-  DEFAULT_POSITION_STYLE, DRAWING_TYPES, ENTRY, MAX_FILL_OPACITY, STOP, TARGET,
-  ZONE_COLORS, createDrawing, moveAnchor, normalizeOpacity, parseDrawing,
-  translateDrawing,
+  DEFAULT_POSITION_STYLE, DRAWING_TYPES, ENTRY, LEGACY_POSITION_TYPES,
+  MAX_FILL_OPACITY, STOP, TARGET, ZONE_COLORS, createDrawing, moveAnchor,
+  normalizeOpacity, parseDrawing, translateDrawing,
 } from '../src/components/chart/drawings/model.js';
 
 const SIZE = { width: 800, height: 400 };
@@ -147,7 +147,7 @@ test('measure from a price of zero reports no percentage rather than Infinity', 
 
 test('a long drag places the target at twice the risk above the entry', () => {
   // Dragged from entry 100 down to stop 90: risk 10, so the target starts at 120.
-  const pts = buildFromGesture('long', { time: 0, price: 100 }, { time: 5, price: 90 });
+  const pts = buildFromGesture('position', { time: 0, price: 100 }, { time: 5, price: 90 });
 
   assert.equal(pts.length, 3);
   assert.deepEqual(pts[ENTRY], { time: 0, price: 100 });
@@ -158,7 +158,7 @@ test('a long drag places the target at twice the risk above the entry', () => {
 
 test('a short drag mirrors it: stop above, target below', () => {
   // Entry 100, stop dragged up to 110: risk 10, target at 80.
-  const pts = buildFromGesture('short', { time: 0, price: 100 }, { time: 5, price: 110 });
+  const pts = buildFromGesture('position', { time: 0, price: 100 }, { time: 5, price: 110 });
 
   assert.equal(pts[STOP].price, 110);
   assert.equal(pts[TARGET].price, 80, `2 × 10 below the entry, got ${pts[TARGET].price}`);
@@ -169,8 +169,8 @@ test('tools other than positions store exactly what was dragged', () => {
   const b = { time: 5, price: 20 };
   assert.deepEqual(buildFromGesture('trendline', a, b), [a, b]);
   assert.deepEqual(buildFromGesture('horizontal', a, b), [a], 'a one-point tool ignores the end');
-  assert.equal(gesturePoints('long'), 2, 'a position is dragged with two points');
-  assert.equal(pointsRequired('long'), 3, 'but stored with three');
+  assert.equal(gesturePoints('position'), 2, 'a position is dragged with two points');
+  assert.equal(pointsRequired('position'), 3, 'but stored with three');
 });
 
 test('position stats report risk, reward and R:R', () => {
@@ -200,21 +200,21 @@ test('a stop at the entry reports no R:R rather than infinity', () => {
 test('a position block is grabbable anywhere inside it', () => {
   // entry y=200, stop y=250, target y=100, spanning x 100..300.
   const pts = [{ x: 100, y: 200 }, { x: 300, y: 250 }, { x: 300, y: 100 }];
-  assert.equal(hitTest('long', pts, { x: 200, y: 150 }, SIZE), true, 'in the reward zone');
-  assert.equal(hitTest('long', pts, { x: 200, y: 230 }, SIZE), true, 'in the risk zone');
-  assert.equal(hitTest('long', pts, { x: 200, y: 200 }, SIZE), true, 'on the entry line');
-  assert.equal(hitTest('long', pts, { x: 400, y: 200 }, SIZE), false, 'right of the block');
-  assert.equal(hitTest('long', pts, { x: 200, y: 60 }, SIZE), false, 'above the target');
-  assert.equal(hitTest('short', pts, { x: 200, y: 150 }, SIZE), true, 'same test for a short');
+  assert.equal(hitTest('position', pts, { x: 200, y: 150 }, SIZE), true, 'in the reward zone');
+  assert.equal(hitTest('position', pts, { x: 200, y: 230 }, SIZE), true, 'in the risk zone');
+  assert.equal(hitTest('position', pts, { x: 200, y: 200 }, SIZE), true, 'on the entry line');
+  assert.equal(hitTest('position', pts, { x: 400, y: 200 }, SIZE), false, 'right of the block');
+  assert.equal(hitTest('position', pts, { x: 200, y: 60 }, SIZE), false, 'above the target');
+  assert.equal(hitTest('position', pts, { x: 200, y: 150 }, SIZE), true, 'the same block either way round');
 });
 
 test('an unfinished position block is not a hit', () => {
-  assert.equal(hitTest('long', [{ x: 0, y: 0 }, { x: 10, y: 10 }], { x: 5, y: 5 }, SIZE), false);
+  assert.equal(hitTest('position', [{ x: 0, y: 0 }, { x: 10, y: 10 }], { x: 5, y: 5 }, SIZE), false);
 });
 
 test('dragging the stop or target moves the shared right edge, not just one', () => {
   // Both sit on the right edge; moving one alone would tear the block in half.
-  const d = createDrawing('long', [
+  const d = createDrawing('position', [
     { time: 0, price: 100 },
     { time: 500, price: 90 },
     { time: 500, price: 120 },
@@ -233,7 +233,7 @@ test('dragging the stop or target moves the shared right edge, not just one', ()
 });
 
 test('dragging the entry leaves the right edge alone', () => {
-  const d = createDrawing('long', [
+  const d = createDrawing('position', [
     { time: 0, price: 100 },
     { time: 500, price: 90 },
     { time: 500, price: 120 },
@@ -246,38 +246,113 @@ test('dragging the entry leaves the right edge alone', () => {
 });
 
 test('a position survives create → parse with all three anchors', () => {
-  const original = createDrawing('short', [
+  const original = createDrawing('position', [
     { time: 1000, price: 50 },
     { time: 2000, price: 55 },
     { time: 2000, price: 40 },
   ], { color: 'ind-4' });
   const back = parseDrawing(JSON.parse(JSON.stringify(original)));
 
-  assert.equal(back.type, 'short');
+  assert.equal(back.type, 'position');
   assert.equal(back.points.length, 3);
   assert.deepEqual(back.points, original.points);
 });
 
 test('a position with the wrong number of anchors is refused', () => {
-  assert.throws(() => createDrawing('long', [
+  assert.throws(() => createDrawing('position', [
     { time: 0, price: 1 }, { time: 1, price: 2 },
   ]), /needs exactly 3/);
   assert.equal(parseDrawing({
-    type: 'long', points: [{ time: 0, price: 1 }, { time: 1, price: 2 }],
+    type: 'position', points: [{ time: 0, price: 1 }, { time: 1, price: 2 }],
   }), null);
+});
+
+/* ─── Direction follows the anchors ─────────────────────────────────────── */
+
+test('direction comes from where the target sits, not from a stored flag', () => {
+  // Target above the entry is a long, below it a short — whichever way the
+  // block was originally drawn.
+  assert.equal(positionDirection(100, 90, 120), 'long');
+  assert.equal(positionDirection(100, 110, 80), 'short');
+});
+
+test('dragging the target across the entry flips the direction', () => {
+  // This is the whole point of merging the two tools: the same block reads as
+  // a long or a short depending only on where its anchors are.
+  const long = createDrawing('position', [
+    { time: 0, price: 100 }, { time: 5, price: 90 }, { time: 5, price: 120 },
+  ]);
+  assert.equal(positionDirection(
+    long.points[ENTRY].price, long.points[STOP].price, long.points[TARGET].price,
+  ), 'long');
+
+  const flipped = moveAnchor(long, TARGET, 5, 80);
+  assert.equal(positionDirection(
+    flipped.points[ENTRY].price, flipped.points[STOP].price, flipped.points[TARGET].price,
+  ), 'short', 'the label has to follow the picture');
+});
+
+test('a target level with the entry falls back to the stop', () => {
+  assert.equal(positionDirection(100, 90, 100), 'long', 'stop below means long');
+  assert.equal(positionDirection(100, 110, 100), 'short', 'stop above means short');
+});
+
+test('a block with all three prices equal has no direction', () => {
+  assert.equal(positionDirection(100, 100, 100), null);
+});
+
+/* ─── Migration from the separate long/short tools ──────────────────────── */
+
+test('a long or short saved before the merge loads as a position', () => {
+  for (const legacy of LEGACY_POSITION_TYPES) {
+    const back = parseDrawing({
+      id: `old-${legacy}`,
+      type: legacy,
+      points: [{ time: 0, price: 100 }, { time: 5, price: 90 }, { time: 5, price: 120 }],
+      color: 'ind-2',
+    });
+    assert.ok(back, `${legacy} must still load`);
+    assert.equal(back.type, 'position', `${legacy} becomes a position`);
+    assert.equal(back.id, `old-${legacy}`, 'and keeps its identity');
+    assert.equal(back.points.length, 3);
+    assert.equal(back.profitColor, DEFAULT_POSITION_STYLE.profitColor,
+      'styling defaults are filled in');
+  }
+});
+
+test('a migrated short keeps reading as a short', () => {
+  // Entry 100, stop 110, target 80 — drawn with the old short tool. After
+  // migration its direction has to come out the same way.
+  const back = parseDrawing({
+    type: 'short',
+    points: [{ time: 0, price: 100 }, { time: 5, price: 110 }, { time: 5, price: 80 }],
+  });
+  assert.equal(positionDirection(
+    back.points[ENTRY].price, back.points[STOP].price, back.points[TARGET].price,
+  ), 'short');
+});
+
+test('the legacy names cannot be drawn any more, only loaded', () => {
+  for (const legacy of LEGACY_POSITION_TYPES) {
+    assert.equal(DRAWING_TYPES.includes(legacy), false, `${legacy} is not an offered tool`);
+    assert.throws(() => createDrawing(legacy, [
+      { time: 0, price: 100 }, { time: 5, price: 90 }, { time: 5, price: 120 },
+    ]), /unknown type/);
+  }
+  assert.ok(DRAWING_TYPES.includes('position'));
 });
 
 /* ─── Position styling ──────────────────────────────────────────────────── */
 
 test('a position block carries its own zone colours and opacity', () => {
-  const d = createDrawing('long', [
+  const d = createDrawing('position', [
     { time: 0, price: 100 }, { time: 5, price: 90 }, { time: 5, price: 120 },
   ]);
   assert.equal(d.profitColor, DEFAULT_POSITION_STYLE.profitColor);
   assert.equal(d.lossColor, DEFAULT_POSITION_STYLE.lossColor);
   assert.equal(d.fillOpacity, DEFAULT_POSITION_STYLE.fillOpacity);
 
-  const styled = createDrawing('short', [
+  const styled = createDrawing('position', [
     { time: 0, price: 100 }, { time: 5, price: 110 }, { time: 5, price: 80 },
   ], { profitColor: 'ind-2', lossColor: 'ind-4', fillOpacity: 0.35 });
   assert.equal(styled.profitColor, 'ind-2');
@@ -305,7 +380,7 @@ test('opacity is clamped into a usable range', () => {
 });
 
 test('styling survives storage, and a block saved before it existed still loads', () => {
-  const original = createDrawing('long', [
+  const original = createDrawing('position', [
     { time: 0, price: 100 }, { time: 5, price: 90 }, { time: 5, price: 120 },
   ], { profitColor: 'accent', lossColor: 'ind-3', fillOpacity: 0.4 });
   const back = parseDrawing(JSON.parse(JSON.stringify(original)));
@@ -315,7 +390,7 @@ test('styling survives storage, and a block saved before it existed still loads'
 
   // A block written before these fields existed.
   const old = parseDrawing({
-    type: 'long',
+    type: 'position',
     points: [{ time: 0, price: 100 }, { time: 5, price: 90 }, { time: 5, price: 120 }],
   });
   assert.equal(old.profitColor, DEFAULT_POSITION_STYLE.profitColor);
@@ -323,7 +398,7 @@ test('styling survives storage, and a block saved before it existed still loads'
 
   // And one written with nonsense in those fields.
   const broken = parseDrawing({
-    type: 'long',
+    type: 'position',
     points: [{ time: 0, price: 100 }, { time: 5, price: 90 }, { time: 5, price: 120 }],
     profitColor: 42,
     fillOpacity: 'very',

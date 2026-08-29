@@ -59,18 +59,19 @@ export const TOOLS = [
     icon: 'measure',
   },
   {
-    id: 'long',
-    name: 'Long position',
-    hint: 'Drag from entry down to the stop; the target starts at 2R',
-    icon: 'long',
-  },
-  {
-    id: 'short',
-    name: 'Short position',
-    hint: 'Drag from entry up to the stop; the target starts at 2R',
-    icon: 'short',
+    id: 'position',
+    name: 'Position',
+    hint: 'Drag from the entry to the stop — down for a long, up for a short',
+    icon: 'position',
   },
 ];
+
+/* One tool covers both directions, because dragging an anchor across the entry
+ * turns one into the other anyway. Two tools that behave identically and then
+ * disagree with the picture are worse than one that reads its direction off the
+ * geometry. These are the names used before 0.1.1; drawings saved under them
+ * load as positions. */
+export const LEGACY_POSITION_TYPES = ['long', 'short'];
 
 /** Anchor order for the position tools, used by the renderer and the handles. */
 export const ENTRY = 0;
@@ -78,7 +79,7 @@ export const STOP = 1;
 export const TARGET = 2;
 
 export function isPositionTool(type) {
-  return type === 'long' || type === 'short';
+  return type === 'position' || LEGACY_POSITION_TYPES.includes(type);
 }
 
 export const DRAWING_TYPES = TOOLS.filter((t) => t.id !== 'cursor').map((t) => t.id);
@@ -165,10 +166,13 @@ export function createDrawing(type, points, options = {}) {
  */
 export function parseDrawing(raw) {
   if (!raw || typeof raw !== 'object') return null;
-  if (!DRAWING_TYPES.includes(raw.type)) return null;
+  if (!DRAWING_TYPES.includes(raw.type) && !LEGACY_POSITION_TYPES.includes(raw.type)) return null;
+  // A long or short saved before the two were merged becomes a position; its
+  // direction comes from the anchors it already has.
+  const type = LEGACY_POSITION_TYPES.includes(raw.type) ? 'position' : raw.type;
   if (!Array.isArray(raw.points)) return null;
 
-  const required = pointsRequired(raw.type);
+  const required = pointsRequired(type);
   if (raw.points.length !== required) return null;
 
   const points = [];
@@ -179,14 +183,14 @@ export function parseDrawing(raw) {
 
   const drawing = {
     id: typeof raw.id === 'string' && raw.id ? raw.id : `d${Date.now().toString(36)}${nextLocalId++}`,
-    type: raw.type,
+    type,
     points,
     color: typeof raw.color === 'string' ? raw.color : 'ind-1',
     width: Number.isFinite(raw.width) ? raw.width : 1,
     createdAt: Number.isFinite(raw.createdAt) ? raw.createdAt : Date.now(),
   };
 
-  if (isPositionTool(raw.type)) {
+  if (isPositionTool(type)) {
     // Styling written before these fields existed, or written badly, falls back
     // to the defaults rather than costing the drawing.
     drawing.profitColor = typeof raw.profitColor === 'string'

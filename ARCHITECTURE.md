@@ -235,12 +235,28 @@ Vorhanden: Trendlinie, Strahl, horizontale und vertikale Linie, Rechteck, Fibona
 Retracement, ein Messwerkzeug (Preisdifferenz, Prozent, Anzahl Bars) sowie Long- und
 Short-Position.
 
-### Positionswerkzeuge
+### Positionswerkzeug
 
-Long und Short sind die einzigen Zeichnungen mit drei Preisen statt zwei Punkten: Entry, Stop
-und Ziel. Gezogen wird nur vom Entry zum Stop — das Ziel setzt sich zunächst auf das Doppelte
-des Risikos auf der Gegenseite, weil so ein Trade tatsächlich bemessen wird. Danach ist jeder
-der drei Anker frei verschiebbar.
+Die Position ist die einzige Zeichnung mit drei Preisen statt zwei Punkten: Entry, Stop und
+Ziel. Gezogen wird nur vom Entry zum Stop — das Ziel setzt sich zunächst auf das Doppelte des
+Risikos auf der Gegenseite, weil so ein Trade tatsächlich bemessen wird. Danach ist jeder der
+drei Anker frei verschiebbar.
+
+**Ein Werkzeug für beide Richtungen.** Long und Short waren anfangs getrennt, taten aber
+exakt dasselbe: Die Erzeugung unterschied sich in nichts außer dem Etikett, und wer den Stop
+über den Entry zog, hatte faktisch einen Short, dessen Beschriftung weiter „LONG" behauptete.
+Die Richtung wird deshalb **nicht gespeichert**, sondern aus der Geometrie gelesen — Ziel über
+dem Entry heißt Long, darunter Short (`positionDirection`). Nach unten ziehen ergibt einen
+Long, nach oben einen Short, ohne dass dem Werkzeug gesagt werden müsste, was gemeint war. So
+kann die Beschriftung dem Bild nicht widersprechen.
+
+Liegt das Ziel exakt auf dem Entry, entscheidet die Seite des Stops; fallen alle drei Preise
+zusammen, gibt es keine Richtung und der Block heißt schlicht „POSITION".
+
+Zeichnungen, die noch unter `long` oder `short` gespeichert wurden, werden beim Laden auf
+`position` abgebildet (`LEGACY_POSITION_TYPES`). Ihre Richtung ergibt sich aus den Ankern, die
+sie ohnehin schon haben, also bleibt ein alter Short ein Short. Erzeugen lassen sich die alten
+Typen nicht mehr.
 
 Gespeichert werden drei Anker, und Stop und Ziel teilen sich die rechte Kante. Wird einer von
 beiden gezogen, muss der andere in der Zeit mitgehen, sonst reißt der Block auseinander;
@@ -430,8 +446,8 @@ Fenstererzeugung und IPC-Handler sie teilen können, ohne einander zu importiere
 - **M0.5 — Indikatoren** ✅ Gemeinsames Indikator-Modul, Volume Profile mit POC, Value Area
   und Buy/Sell-Delta, Bedienpanel.
 - **M0.6 — Zeichenwerkzeuge** ✅ Trendlinie, Strahl, horizontale/vertikale Linie, Rechteck,
-  Fibonacci, Messwerkzeug, Long- und Short-Position mit Risiko/Chance-Zonen; Auswählen,
-  Verschieben, Ankerpunkte ziehen, Speicherung pro Symbol.
+  Fibonacci, Messwerkzeug und ein Positionswerkzeug mit Risiko/Chance-Zonen, dessen Richtung
+  aus den Ankern folgt; Auswählen, Verschieben, Ankerpunkte ziehen, Speicherung pro Symbol.
 - **M1 — Order-Engine** ✅ Market/Limit/Stop, Klammern mit gegenseitiger Aufhebung, Spread,
   Slippage, Kommission, Teilausführungen und Umkehr, Intrabar-Auflösung über die 1m-Basis,
   Backtest-Loop mit Kennzahlen. Vorgezogen, weil Replay sonst zweimal gebaut würde.

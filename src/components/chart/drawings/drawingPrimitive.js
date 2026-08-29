@@ -8,7 +8,7 @@
  * by hand should sit above the candles, because that is where they put it.
  */
 import {
-  FIB_LEVELS, HANDLE_RADIUS, fibPrices, measureStats, positionStats,
+  FIB_LEVELS, HANDLE_RADIUS, fibPrices, measureStats, positionDirection, positionStats,
 } from './geometry.js';
 import {
   DEFAULT_POSITION_STYLE, ENTRY, STOP, TARGET, normalizeOpacity,
@@ -136,6 +136,7 @@ class DrawingRenderer {
         if (b) this._measure(ctx, drawing, a, b);
         break;
 
+      case 'position':
       case 'long':
       case 'short':
         if (pts.length === 3) this._position(ctx, size, drawing, pts);
@@ -281,9 +282,15 @@ class DrawingRenderer {
     label(yStop, `SL  ${formatPrice(stats.stop)}   −${pct(stats.riskPercent)}`, lossColor);
 
     // Summary box, above or below the block depending on where there is room.
+    /* The direction is read off the anchors, never stored: dragging the target
+     * across the entry turns a long into a short, and the label has to follow
+     * the picture rather than what the block was called when it was drawn. */
+    const direction = positionDirection(stats.entry, stats.stop, stats.target);
+    const name = direction === 'long' ? 'LONG' : direction === 'short' ? 'SHORT' : 'POSITION';
+
     const rr = stats.rr == null ? '—' : `${stats.rr.toFixed(2)}`;
     const lines = [
-      `${drawing.type === 'long' ? 'LONG' : 'SHORT'}   R:R ${rr}`,
+      `${name}   R:R ${rr}`,
       `risk ${formatPrice(stats.risk)}   reward ${formatPrice(stats.reward)}`,
     ];
 
