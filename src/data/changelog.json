@@ -1,6 +1,28 @@
 {
   "releases": [
     {
+      "version": "v0.1.1-dev",
+      "date": "Aug 2026",
+      "changes": [
+        {
+          "type": "fix",
+          "text": "Scrolling back through history no longer stops the chart with an error about bars being out of order. On any timeframe above 1 minute, the boundary between one loaded page and the next fell inside a period, so the same bar arrived twice"
+        },
+        {
+          "type": "fix",
+          "text": "The first bar of each page loaded while scrolling back was built from only part of its period, so its open, high, low and close were wrong without anything looking amiss. Pages now start and end on period boundaries"
+        },
+        {
+          "type": "style",
+          "text": "The position tool writes everything inside the block now: target and stop with their price and percentage, the entry on the reward side, and the direction with reward-to-risk against the entry line in the risk zone"
+        },
+        {
+          "type": "break",
+          "text": "The summary box above a position block is gone, along with the risk and reward amounts it showed. The percentages carry the same information and compare across instruments — and the box had been covering the target's percentage"
+        }
+      ]
+    },
+    {
       "version": "v0.1.0-dev",
       "date": "Aug 2026",
       "changes": [
