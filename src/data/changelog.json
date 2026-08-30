@@ -1,6 +1,28 @@
 {
   "releases": [
     {
+      "version": "v0.1.5-dev",
+      "date": "Aug 2026",
+      "changes": [
+        {
+          "type": "feat",
+          "text": "Silver Bullet setups, drawn end to end: liquidity is taken, the reversal tears a fair value gap, price closes past the last candle that opposed it, and the entry sits at the retest of that gap - all inside one of the three Silver Bullet hours in New York time. Entry, stop and target are drawn with it, and each setup is carried forward to whichever it reached first. A run that never comes back is a break rather than a setup and is not marked"
+        },
+        {
+          "type": "feat",
+          "text": "You choose what counts: which of the three hours, whether the whole chain has to fall inside one or only the entry, how far the gap may lag the sweep and the entry the gap, the smallest gap worth trading in points or percent, and where the target sits as a multiple of the risk"
+        },
+        {
+          "type": "feat",
+          "text": "Drawings now carry their own stroke: colour, a width from 1 to 4, and a solid, dashed or dotted line. Pick a drawing and the bar appears over the chart next to it; what you choose also arms the next drawing, so a style set once stays set. Fib, measure, range profile and position blocks keep their own dashes, because there the pattern means something"
+        },
+        {
+          "type": "feat",
+          "text": "Hold shift while dragging to lock a drawing to one axis - level or upright. It works while drawing a new shape, while dragging one end of an existing one, and while moving a whole shape. The axis follows the direction you actually dragged further on screen, so it does not change when the price scale is zoomed"
+        }
+      ]
+    },
+    {
       "version": "v0.1.4-dev",
       "date": "Aug 2026",
       "changes": [

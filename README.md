@@ -98,6 +98,12 @@ Zwei Dinge sind dabei bewusst so gebaut:
   lange sie danach halten muss; ein Durchstoß ohne Rückkehr ist kein Hunt, sondern ein
   Bruch, und wird nicht gezeigt. Auch hier ist getrennt, wo das Niveau liegt und ab welcher
   Bar es überhaupt bekannt war.
+- **Silver Bullet** setzt die Bausteine zu einem fertigen Setup zusammen: ein Sweep holt
+  Liquidität, die Umkehr reißt eine FVG, der Preis schließt jenseits der letzten Gegenkerze,
+  und der Einstieg liegt beim Rücktest der Lücke — alles in einer der drei Silver-Bullet-Stunden
+  nach New Yorker Zeit. Entry, Stop und Ziel werden gleich mitgezeichnet, samt Ausgang. Der
+  Ausgang ist eine pessimistische Schätzung: Trifft eine Bar Stop und Ziel, gilt der Stop.
+  Genau abrechnen kann das nur die Engine, die dafür Minutenbars nachlädt.
 - Das **Volume Profile rechnet immer auf 1m-Bars**, egal welchen Timeframe der Chart zeigt.
   Wer stattdessen die angezeigten Bars profiliert, bekommt auf dem 4h-Chart einen anderen
   POC als auf dem 5m-Chart.
@@ -197,8 +203,9 @@ strategies/       Beispielstrategien (sma-cross.js)
 src/
   components/       ChartPanel, DataManager, IndicatorPanel, DrawingToolbar
   components/chart/ volumeProfilePrimitive.js — Canvas-Plugin für das Profil
-  components/chart/ fvgPrimitive.js, sessionPrimitive.js, huntPrimitive.js — Zonen und Marken
+  components/chart/ fvgPrimitive.js, sessionPrimitive.js, huntPrimitive.js, setupPrimitive.js
   components/chart/drawings/  Geometrie, Modell, Rendering und Maussteuerung
+  components/       LineStyleBar, PositionStyleBar — Stilleisten über dem Chart
   stores/session.js Symbol, Timeframe, Bibliothek, aktive Indikatoren
   styles/           Katsumii „Living Data" — tokens.css, base.css, fonts.css
 scripts/            Werkzeuge: Smoke-Test, Backtest-Runner, Versions-Sync

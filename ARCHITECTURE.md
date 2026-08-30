@@ -192,7 +192,7 @@ Serien-Indikatoren lassen `kind` weg — das ist der Normalfall. Der Chart legt 
 Serie an, sondern schiebt sie in ein Pane-Primitive.
 
 Vorhanden: SMA, EMA, Bollinger Bands, RSI, ATR, VWAP (täglich/wöchentlich verankert),
-Fair Value Gaps, Inverted Fair Value Gaps, Handelssessions und Stop Hunts.
+Fair Value Gaps, Inverted Fair Value Gaps, Handelssessions, Stop Hunts und Silver Bullet.
 
 ### Bar-Zeiten sind Millisekunden
 
@@ -417,9 +417,51 @@ sichtbar dort lag), die gefüllte Raid-Box von Niveau bis Docht-Extrem über der
 durchstoßenden Bar, und das blasse Fenster bis zur bestätigenden Bar. Ist das Fenster leer,
 hat dieselbe Bar zurückgeschlossen — und genau das soll man sehen.
 
+### Silver Bullet
+
+Silver Bullet ist **zuerst eine Uhrzeit**, dann ein Muster. Drei Ein-Stunden-Fenster, alle in
+New Yorker Ortszeit — 03:00 (London Open), 10:00 (NY AM), 14:00 (NY PM) —, gelesen über
+`localReading` aus `sessions.js`, damit sie der US-Zeitumstellung folgen statt zweimal im Jahr
+eine Stunde danebenzuliegen. Bar-Zeiten müssen deshalb Millisekunden sein.
+
+**Die Kette.** Vier Glieder, in dieser Reihenfolge, alle vier erforderlich:
+
+1. **Sweep** — Liquidität wird geholt: ein Hoch oder Tief wird gelaufen und zurückgegeben.
+2. **FVG** — die Umkehr ist impulsiv genug, um eine Lücke in Gegenrichtung zu reißen.
+3. **MSS** — der Preis schließt jenseits des **Bodys der letzten gegenläufigen Kerze** vor
+   dieser Lücke. Beim Short: die letzte bullische Kerze, unterschritten. Das Niveau ist deren
+   `open` — in beiden Richtungen die Body-Kante, die dem Impuls entgegensteht.
+4. **Entry** — der Preis kommt zurück und berührt die nahe Kante der Lücke.
+
+Nichts davon wird hier neu erfunden: Der Sweep kommt aus `stophunt.js`, die Lücke aus
+`fvg.js`. Es sind dieselben Detektoren, die der Chart zeichnet — ein Setup kann also nicht auf
+einem Niveau sitzen, über das der Chart anderer Meinung ist. Genau dafür gibt es `shared/`.
+
+**Was der MSS wirklich tut.** Gemessen auf einem Monat BTC-5m: Von 1267 bärischen Lücken
+erfüllen **91 %** den MSS schon auf der eigenen Bestätigungsbar, 97 % binnen zehn Bars. Das ist
+strukturell — ein Impuls, der steil genug für eine Lücke ist, hat die letzte Gegenkerze fast
+zwangsläufig unterschritten. Der MSS **bestätigt** also, er selektiert nicht. Wer mehr Setups
+sucht, muss an Fenster, Sweep oder `minGapSize` drehen, nicht am MSS.
+
+**Kandidatenwahl.** Auf einen Sweep können mehrere Lücken folgen, und die erste ist nicht
+zwangsläufig die brauchbare — der Preis kommt vielleicht nie zu ihr zurück. „Das erste Setup,
+das alle Regeln erfüllt" heißt deshalb: die Kandidaten der Reihe nach durchgehen und die erste
+Kette nehmen, die **vollständig** schließt, statt bei der ersten Lücke aufzugeben. Pro
+Fenster-Vorkommen (Datum + Fenster) bleibt genau ein Setup stehen.
+
+**`scope` skaliert nicht auf hohe Timeframes.** `entry` verlangt nur den Einstieg im Fenster,
+`all` die ganze Kette. Eine Silver-Bullet-Stunde ist auf 5m zwölf Bars lang, auf 15m vier und
+auf 1h eine einzige — `all` ist oberhalb von 5m praktisch unerfüllbar und liefert dort fast
+keine Setups. Das ist kein Fehler, sondern die Konsequenz aus Fensterlänge und Bargröße.
+
+**Ergebnisse sind pessimistisch.** Jedes Setup wird vorwärts abgelaufen, bis Ziel oder Stop
+zuerst erreicht ist; berührt eine Bar beides, gewinnt der Stop. Die Engine kann das besser —
+sie löst über Minutenbars auf (siehe Abschnitt 4) —, dieser Indikator hat nur die angezeigten
+Bars. `outcome` ist also eine gegen das Setup verzerrte Schätzung, keine Abrechnung.
+
 ### Zonenfarben
 
-Die Zonen-Indikatoren und die Stop Hunts tragen je zwei Farbparameter (bullisch / bärisch). Gespeichert werden
+Die Zonen-Indikatoren, die Stop Hunts und die Silver-Bullet-Setups tragen je zwei Farbparameter (bullisch / bärisch). Gespeichert werden
 **Token-Namen, kein Hex**: dieselbe Wahl muss in Hell und Dunkel funktionieren, und das tut
 nur ein Token. Der Renderer setzt die Deckkraft ausschließlich über `globalAlpha` und backt
 sie nie zusätzlich in die Farbe — beides zusammen multipliziert sich, und eine Zone, die mit
@@ -492,6 +534,52 @@ Profile.
 Vorhanden: Trendlinie, Strahl, horizontale und vertikale Linie, Rechteck, Fibonacci-
 Retracement, ein Messwerkzeug (Preisdifferenz, Prozent, Anzahl Bars) sowie Long- und
 Short-Position.
+
+### Strichstil
+
+Jede Zeichnung trägt Farbe, Strichstärke (1–4 px) und Strichmuster (durchgezogen, gestrichelt,
+gepunktet). Bearbeitet wird das in der `LineStyleBar`, die über dem Chart schwebt, sobald eine
+Zeichnung ausgewählt ist — aus demselben Grund wie die `PositionStyleBar`: Eine Strichstärke
+beurteilt man neben der Linie, die sie ändert, nicht quer durchs Fenster. Beide Leisten teilen
+sich die Ecke und erscheinen nie gleichzeitig, denn eine Zeichnung ist entweder ein
+Positionsblock oder keiner.
+
+Die Auswahl merkt sich die Einstellung für die nächste Zeichnung (`setLineStyle`, wie
+`setPositionStyle`). Ohne diese zweite Hälfte fiele jede neue Zeichnung auf 1 px durchgezogen
+zurück, und die Einstellung wirkte kaputt.
+
+**Das Muster gilt nur für die einfachen Linienformen.** Fib, Messwerkzeug, Range-Profil und
+Positionsblock setzen ihre Striche selbst: Deren Strichelung ist Bedeutung — welches Level,
+welche Kante — und darf nicht von einer Dekoration überschrieben werden.
+
+**Auswahl addiert ein Pixel statt zu verdoppeln.** Bei der früheren festen Breite von 1 war
+Verdoppeln unauffällig; sobald die Breite dem Nutzer gehört, würde eine ausgewählte 4-px-Linie
+auf 8 springen. Bei Breite 1 liefern beide Regeln dieselben 2 px, also sieht nichts, was vorher
+existierte, anders aus.
+
+**Gespeicherte Werte werden beim Laden normalisiert.** `normalizeWidth` rundet auf eine
+angebotene Breite und fällt sonst auf 1 zurück — eine Breite von 0 zeichnet nichts, eine
+negative wirft in manchen Engines. Ein unbekanntes Muster zeichnet durchgezogen statt gar
+nicht. Eine Datei aus der Zeit vor diesen Feldern lädt unverändert weiter.
+
+### Einrasten mit Shift
+
+Wird beim Ziehen Shift gehalten, rastet die Geste auf eine Achse ein: horizontal hält den Preis
+des Ankers fest, vertikal dessen Zeit. Das gilt beim Neuzeichnen, beim Ziehen eines Ankers
+(gegen das andere Ende der Linie) und beim Verschieben einer ganzen Zeichnung (gegen den
+Startpunkt der Bewegung).
+
+**Die Achse wird in Pixeln entschieden, niemals in Marktkoordinaten.** Eine Preisdifferenz und
+eine Zeitdifferenz sind nicht vergleichbar — zwischen 20 Dollar und 20 Minuten gibt es kein
+Verhältnis. Wer die beiden Zahlen direkt vergleicht, lässt die größere gewinnen, und dann
+kippt die Achse beim Zoomen der Preisskala, ohne dass sich der Zeiger bewegt hat. Auf dem
+Schirm sind beide Deltas Pixel, und die Antwort ist die, die der Nutzer meint: die Richtung,
+in die er weiter gezogen hat. Deshalb wird der Anker für den Vergleich zurück auf den Schirm
+projiziert. Festgehalten in `test/drawings.test.js`.
+
+Der Zustand wird pro Event gelesen statt mitgeführt, also wirkt Loslassen mitten im Ziehen erst
+bei der nächsten Mausbewegung. Positionsblöcke rasten nicht ein: Ihre drei Anker kodieren
+bereits eine Richtung, und eine waagerechte Sperre würde das Risiko auf null setzen.
 
 ### Positionswerkzeug
 

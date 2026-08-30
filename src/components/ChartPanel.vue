@@ -9,10 +9,12 @@ import {
 } from './chart/rangeProfilePrimitive.js';
 import { SessionPrimitive } from './chart/sessionPrimitive.js';
 import { HuntPrimitive } from './chart/huntPrimitive.js';
+import { SetupPrimitive } from './chart/setupPrimitive.js';
 import { DrawingPrimitive } from './chart/drawings/drawingPrimitive.js';
 import { useDrawings } from './chart/drawings/useDrawings.js';
 import DrawingToolbar from './DrawingToolbar.vue';
 import PositionStyleBar from './PositionStyleBar.vue';
+import LineStyleBar from './LineStyleBar.vue';
 import { isPositionTool } from './chart/drawings/model.js';
 import { latestPage, prependBars, previousPage } from './chart/barPaging.js';
 import { datasetFor, session, setError, setVolumeProfile } from '../stores/session.js';
@@ -45,6 +47,7 @@ let fvgPrimitive = null;
 let rangePrimitive = null;
 let sessionPrimitive = null;
 let huntPrimitive = null;
+let setupPrimitive = null;
 /** windowKey -> profile, so panning or selecting never refetches. */
 const rangeProfiles = new Map();
 let rangeTimer = null;
@@ -71,6 +74,13 @@ const hasSelection = computed(() => draw.selectedId.value !== null);
 const selectedPosition = computed(() => {
   const selected = draw.drawings.value.find((d) => d.id === draw.selectedId.value);
   return selected && isPositionTool(selected.type) ? selected : null;
+});
+
+/* The stroke bar covers everything that is not a position block. The two are
+ * mutually exclusive by construction, so they can share a corner. */
+const selectedLine = computed(() => {
+  const selected = draw.drawings.value.find((d) => d.id === draw.selectedId.value);
+  return selected && !isPositionTool(selected.type) ? selected : null;
 });
 
 const TF_MS = {
@@ -196,6 +206,7 @@ function syncIndicators() {
   const zoneGroups = [];
   const sessionGroups = [];
   const huntGroups = [];
+  const setupGroups = [];
 
   for (const ind of active) {
     const spec = INDICATORS[ind.id];
@@ -208,6 +219,22 @@ function syncIndicators() {
         sessionGroups.push({
           sessions,
           options: { extent: ind.params.extent, labels: ind.params.labels },
+        });
+      } catch (err) {
+        setError(err);
+      }
+      continue;
+    }
+
+    if (spec.kind === 'setups') {
+      if (!ind.visible || bars.length === 0) continue;
+      try {
+        const { setups } = computeIndicator(ind.id, indicatorBars, ind.params);
+        setupGroups.push({
+          setups,
+          // Drawing-only, so these never reached compute() — see fvg.js.
+          bullColor: ind.params.bullColor,
+          bearColor: ind.params.bearColor,
         });
       } catch (err) {
         setError(err);
@@ -297,6 +324,7 @@ function syncIndicators() {
   fvgPrimitive?.setGroups(zoneGroups);
   sessionPrimitive?.setGroups(sessionGroups);
   huntPrimitive?.setGroups(huntGroups);
+  setupPrimitive?.setGroups(setupGroups);
 }
 
 /* ─── Volume profile ────────────────────────────────────────────────────── */
@@ -538,7 +566,9 @@ function onOverlayDown(event) {
 
 function onOverlayMove(event) {
   const p = localPoint(event);
-  draw.onPointerMove(p.x, p.y, paneSize());
+  // Shift locks the drag to one axis; the state is read per event rather than
+  // tracked, so releasing the key mid-drag takes effect on the next move.
+  draw.onPointerMove(p.x, p.y, paneSize(), event.shiftKey);
   syncDrawings();
 }
 
@@ -557,6 +587,15 @@ function onHostMove(event) {
   if (!overlayEl.value) return;
   const p = localPoint(event);
   draw.updateHover(p.x, p.y, paneSize());
+}
+
+/* Colour goes through setColor, which also arms it for the next drawing; the
+ * rest go through setLineStyle, which does the same for width and dash. */
+function onLineStyle(patch) {
+  if (patch.color !== undefined) draw.setColor(patch.color);
+  const { color, ...stroke } = patch;
+  if (Object.keys(stroke).length > 0) draw.setLineStyle(stroke);
+  syncDrawings();
 }
 
 function onKeyDown(event) {
@@ -644,6 +683,9 @@ onMounted(() => {
 
   huntPrimitive = new HuntPrimitive();
   candles.value.attachPrimitive(huntPrimitive);
+
+  setupPrimitive = new SetupPrimitive();
+  candles.value.attachPrimitive(setupPrimitive);
 
   vpPrimitive = new VolumeProfilePrimitive({
     width: session.volumeProfile.width,
@@ -764,6 +806,14 @@ defineExpose({ reload: loadInitial });
         :loss-color="selectedPosition.lossColor"
         :fill-opacity="selectedPosition.fillOpacity"
         @update="onPositionStyle"
+      />
+
+      <LineStyleBar
+        v-if="selectedLine"
+        :color="selectedLine.color"
+        :width="selectedLine.width"
+        :line-style="selectedLine.lineStyle"
+        @update="onLineStyle"
       />
 
       <div v-if="status" class="chart-status k-mono-label">{{ status }}</div>

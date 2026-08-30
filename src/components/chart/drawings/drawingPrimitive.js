@@ -11,7 +11,7 @@ import {
   FIB_LEVELS, HANDLE_RADIUS, fibPrices, measureStats, positionDirection, positionStats,
 } from './geometry.js';
 import {
-  DEFAULT_POSITION_STYLE, ENTRY, STOP, TARGET, normalizeOpacity,
+  DEFAULT_POSITION_STYLE, dashPattern, ENTRY, STOP, TARGET, normalizeOpacity,
 } from './model.js';
 
 function tokenColor(id) {
@@ -87,8 +87,17 @@ class DrawingRenderer {
 
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
-    ctx.lineWidth = drawing.width * (selected ? 2 : 1);
-    ctx.setLineDash([]);
+    /* Selection adds a pixel rather than doubling. Doubling reads fine at the
+     * old fixed width of 1, but once the width is the user's own choice a
+     * selected 4px line would jump to 8 and swamp the candles under it. At
+     * width 1 both rules give the same 2px, so nothing that existed before
+     * this setting looks different. */
+    ctx.lineWidth = drawing.width + (selected ? 1 : 0);
+    /* The stroke pattern applies to the plain line shapes. Fib, measure,
+     * range profile and the position block set their own below: their dashes
+     * carry meaning — which level, which edge — rather than decoration, and a
+     * per-drawing style must not overwrite that. */
+    ctx.setLineDash(dashPattern(drawing.lineStyle));
 
     switch (drawing.type) {
       case 'horizontal':
@@ -161,6 +170,8 @@ class DrawingRenderer {
         break;
     }
 
+    // Handles are chrome, never dashed, whatever the drawing itself is.
+    ctx.setLineDash([]);
     if (selected) this._handles(ctx, pts, color);
   }
 

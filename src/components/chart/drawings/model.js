@@ -19,13 +19,13 @@ export const TOOLS = [
   {
     id: 'trendline',
     name: 'Trend line',
-    hint: 'Two points, drawn between them',
+    hint: 'Two points, drawn between them. Hold shift to lock it level or upright',
     icon: 'trendline',
   },
   {
     id: 'ray',
     name: 'Ray',
-    hint: 'Two points, extended forward',
+    hint: 'Two points, extended forward. Hold shift to lock it level or upright',
     icon: 'ray',
   },
   {
@@ -43,7 +43,7 @@ export const TOOLS = [
   {
     id: 'rectangle',
     name: 'Rectangle',
-    hint: 'A zone in price and time',
+    hint: 'A zone in price and time. Hold shift to keep one side fixed',
     icon: 'rectangle',
   },
   {
@@ -100,6 +100,35 @@ export const DRAWING_COLORS = [
   { id: 'accent', label: 'Midori' },
 ];
 
+/** Stroke widths offered for line-based drawings, in pixels. */
+export const LINE_WIDTHS = [1, 2, 3, 4];
+
+/* Dash patterns, named rather than stored as arrays: the numbers are a
+ * rendering detail, and a saved file that carried them would freeze today's
+ * spacing into every drawing ever made. */
+export const LINE_STYLES = [
+  { id: 'solid', label: 'Solid', dash: [] },
+  { id: 'dashed', label: 'Dashed', dash: [6, 4] },
+  { id: 'dotted', label: 'Dotted', dash: [1, 3] },
+];
+
+export const DEFAULT_LINE_STYLE = {
+  width: 1,
+  lineStyle: 'solid',
+};
+
+/** The dash pattern for a style id; an unknown id draws solid rather than not at all. */
+export function dashPattern(lineStyle) {
+  return LINE_STYLES.find((s) => s.id === lineStyle)?.dash ?? [];
+}
+
+/** Clamps a stored width to one the toolbar can actually show. */
+export function normalizeWidth(value) {
+  if (!Number.isFinite(value)) return DEFAULT_LINE_STYLE.width;
+  const rounded = Math.round(value);
+  return LINE_WIDTHS.includes(rounded) ? rounded : DEFAULT_LINE_STYLE.width;
+}
+
 /* Zone colours for the position tools. The semantic pair leads, because that is
  * what almost everyone wants; the rest are there for telling several planned
  * trades apart on one chart. */
@@ -151,7 +180,9 @@ export function createDrawing(type, points, options = {}) {
     type,
     points: points.map((p) => ({ time: p.time, price: p.price })),
     color: options.color ?? 'ind-1',
-    width: options.width ?? 1,
+    width: normalizeWidth(options.width),
+    lineStyle: LINE_STYLES.some((s) => s.id === options.lineStyle)
+      ? options.lineStyle : DEFAULT_LINE_STYLE.lineStyle,
     createdAt: Date.now(),
   };
 
@@ -192,7 +223,11 @@ export function parseDrawing(raw) {
     type,
     points,
     color: typeof raw.color === 'string' ? raw.color : 'ind-1',
-    width: Number.isFinite(raw.width) ? raw.width : 1,
+    /* Stroke settings written before these fields existed, or written badly,
+     * fall back to the defaults rather than costing the drawing. */
+    width: normalizeWidth(raw.width),
+    lineStyle: LINE_STYLES.some((s) => s.id === raw.lineStyle)
+      ? raw.lineStyle : DEFAULT_LINE_STYLE.lineStyle,
     createdAt: Number.isFinite(raw.createdAt) ? raw.createdAt : Date.now(),
   };
 

@@ -29,7 +29,7 @@ function specFor(id) {
  * colour — so they read off the same pair. */
 function swatchFor(ind) {
   const spec = INDICATORS[ind.id];
-  if (spec.kind !== 'zones' && spec.kind !== 'hunts') return `var(--ind-${ind.colorIndex})`;
+  if (!['zones', 'hunts', 'setups'].includes(spec.kind)) return `var(--ind-${ind.colorIndex})`;
   return 'linear-gradient(135deg, '
     + `var(--${ind.params.bullColor}) 0 50%, var(--${ind.params.bearColor}) 50%)`;
 }

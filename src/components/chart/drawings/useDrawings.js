@@ -17,10 +17,12 @@
  * works in seconds, so conversion happens at this boundary and nowhere else.
  */
 import { ref, shallowRef } from 'vue';
-import { buildFromGesture, gesturePoints, handleAt, hitTest } from './geometry.js';
 import {
-  DEFAULT_POSITION_STYLE, createDrawing, isPositionTool, moveAnchor, parseDrawing,
-  translateDrawing,
+  buildFromGesture, gesturePoints, handleAt, hitTest, snapAxis, snapToAxis,
+} from './geometry.js';
+import {
+  DEFAULT_LINE_STYLE, DEFAULT_POSITION_STYLE, createDrawing, isPositionTool, moveAnchor,
+  parseDrawing, translateDrawing,
 } from './model.js';
 
 /**
@@ -40,6 +42,10 @@ export function useDrawings(deps) {
   /* Zone styling for position blocks. Editing a selected block also updates
    * this, so the next one drawn keeps the look the user just chose. */
   const positionStyle = ref({ ...DEFAULT_POSITION_STYLE });
+  /* Stroke styling for everything else, kept the same way and for the same
+   * reason: a width chosen once should survive to the next drawing. Colour is
+   * not in here - it has its own control in the toolbar and its own setter. */
+  const lineStyle = ref({ ...DEFAULT_LINE_STYLE });
   /** Whether the overlay should currently take pointer events. */
   const overlayActive = ref(false);
   const cursorStyle = ref('default');
@@ -187,6 +193,24 @@ export function useDrawings(deps) {
 
   /* ─── Gestures ────────────────────────────────────────────────────────── */
 
+  /**
+   * Constrains a point to one axis through an anchor while shift is held.
+   *
+   * The axis is decided from the *pixel* deltas - see snapAxis for why market
+   * units cannot answer this - so the anchor has to be projected back to the
+   * screen rather than compared in time and price.
+   *
+   * Position blocks are left alone: their three anchors already encode a
+   * direction, and locking a drag to the horizontal would set the risk to
+   * zero, which is not a position anyone is trying to draw.
+   */
+  function applySnap(at, anchor, x, y, type) {
+    if (isPositionTool(type)) return at;
+    const anchorXY = project(anchor);
+    if (!anchorXY) return at;
+    return snapToAxis(anchor, at, snapAxis(x - anchorXY.x, y - anchorXY.y));
+  }
+
   function onPointerDown(x, y, size) {
     const at = unproject(x, y);
     if (!at) return;
@@ -198,7 +222,7 @@ export function useDrawings(deps) {
       draft.value = {
         type: activeTool.value,
         color: activeColor.value,
-        width: 1,
+        ...lineStyle.value,
         ...(isPositionTool(activeTool.value) ? positionStyle.value : {}),
         points: buildFromGesture(activeTool.value, at, at),
       };
@@ -219,16 +243,17 @@ export function useDrawings(deps) {
     }
   }
 
-  function onPointerMove(x, y, size) {
+  function onPointerMove(x, y, size, shift = false) {
     if (!gesture) {
       updateHover(x, y, size);
       return;
     }
-    const at = unproject(x, y);
+    let at = unproject(x, y);
     if (!at) return;
 
     if (gesture.mode === 'create') {
       if (gesturePoints(draft.value.type) === 2) {
+        if (shift) at = applySnap(at, gesture.start, x, y, draft.value.type);
         draft.value = {
           ...draft.value,
           points: buildFromGesture(draft.value.type, gesture.start, at),
@@ -242,12 +267,22 @@ export function useDrawings(deps) {
     if (index === -1) return;
 
     if (gesture.mode === 'handle') {
-      const updated = moveAnchor(list[index], gesture.anchorIndex, at.time, at.price);
+      const drawing = list[index];
+      /* An anchor snaps against the one it is tethered to - the other end of
+       * the line - so shift-dragging a trend line's end makes it level with
+       * its start rather than with wherever the drag began. */
+      if (shift && drawing.points.length === 2) {
+        const other = drawing.points[gesture.anchorIndex === 0 ? 1 : 0];
+        at = applySnap(at, other, x, y, drawing.type);
+      }
+      const updated = moveAnchor(drawing, gesture.anchorIndex, at.time, at.price);
       drawings.value = list.map((d, i) => (i === index ? updated : d));
       return;
     }
 
     if (gesture.mode === 'move') {
+      // Moving snaps the whole shape against where the drag started.
+      if (shift) at = applySnap(at, gesture.startPoint, x, y, gesture.original.type);
       const moved = translateDrawing(
         gesture.original,
         at.time - gesture.startPoint.time,
@@ -261,7 +296,7 @@ export function useDrawings(deps) {
     if (!gesture) return;
 
     if (gesture.mode === 'create' && draft.value) {
-      const { type, points, color } = draft.value;
+      const { type, points, color, width, lineStyle: dash } = draft.value;
 
       // A dragged shape that never moved is a stray click, not a drawing.
       const degenerate = gesturePoints(type) === 2
@@ -271,6 +306,8 @@ export function useDrawings(deps) {
         try {
           const drawing = createDrawing(type, points, {
             color,
+            width,
+            lineStyle: dash,
             ...(isPositionTool(type) ? positionStyle.value : {}),
           });
           drawings.value = [...drawings.value, drawing];
@@ -336,6 +373,24 @@ export function useDrawings(deps) {
 
     const selected = selectedDrawing();
     if (selected && isPositionTool(selected.type)) {
+      drawings.value = drawings.value.map((d) => (
+        d.id === selected.id ? { ...d, ...patch } : d
+      ));
+      save();
+    }
+  }
+
+  /**
+   * Restyles the selected drawing's stroke and remembers the choice for the
+   * next one, the same way setPositionStyle does - without the second half,
+   * every new drawing would snap back to a 1px solid line and the setting
+   * would feel broken.
+   */
+  function setLineStyle(patch) {
+    lineStyle.value = { ...lineStyle.value, ...patch };
+
+    const selected = selectedDrawing();
+    if (selected && !isPositionTool(selected.type)) {
       drawings.value = drawings.value.map((d) => (
         d.id === selected.id ? { ...d, ...patch } : d
       ));
@@ -412,8 +467,10 @@ export function useDrawings(deps) {
     updateHover,
 
     positionStyle,
+    lineStyle,
     selectedDrawing,
     setPositionStyle,
+    setLineStyle,
 
     setTool,
     setColor,

@@ -255,6 +255,38 @@ export function gesturePoints(type) {
 }
 
 /**
+ * Which axis a drag should lock to while shift is held.
+ *
+ * Decided in *pixels*, never in market units, for the same reason the hit
+ * tolerance is: a price delta and a time delta are not comparable quantities.
+ * Twenty dollars and twenty minutes have no ratio between them, and whichever
+ * happened to be the larger number would decide the axis — so the lock would
+ * flip when the price scale was zoomed, without the pointer having moved.
+ *
+ * On screen both deltas are pixels, and the answer is the one the user means:
+ * the direction they actually dragged further.
+ *
+ * A drag of exactly zero locks horizontal. It has no direction yet, and one of
+ * the two has to be picked before the pointer commits.
+ */
+export function snapAxis(dx, dy) {
+  return Math.abs(dx) >= Math.abs(dy) ? 'horizontal' : 'vertical';
+}
+
+/**
+ * Locks a market-coordinate point onto one axis through an anchor.
+ *
+ * Horizontal keeps the anchor's price and lets time run; vertical keeps its
+ * time and lets price run. The axis comes from snapAxis and therefore from the
+ * pixel deltas, not from these values.
+ */
+export function snapToAxis(anchor, point, axis) {
+  return axis === 'horizontal'
+    ? { time: point.time, price: anchor.price }
+    : { time: anchor.time, price: point.price };
+}
+
+/**
  * What a position tool is worth: distances, percentages and reward-to-risk.
  *
  * Risk and reward are absolute distances, so the numbers read the same whether

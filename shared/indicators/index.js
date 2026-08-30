@@ -39,6 +39,7 @@ import {
   FVG_PARAMS, IFVG_PARAMS, detectFairValueGaps, detectInvertedFairValueGaps,
 } from './fvg.js';
 import { SESSION_PARAMS, checkSession, computeSessions } from './sessions.js';
+import { SILVER_BULLET_PARAMS, detectSilverBullet } from './silverBullet.js';
 import { STOPHUNT_PARAMS, detectStopHunts } from './stophunt.js';
 
 /** Reusable schema fragment — the UI generates its input fields from this. */
@@ -366,6 +367,17 @@ export const INDICATORS = {
     params: STOPHUNT_PARAMS,
     outputs: [{ key: 'hunts', label: 'Hunts', style: 'zone' }],
     compute: detectStopHunts,
+  },
+
+  silverbullet: {
+    id: 'silverbullet',
+    name: 'Silver Bullet',
+    description: 'Sweep, gap, structure shift and retest — inside one of the three hours.',
+    pane: 'price',
+    kind: 'setups',
+    params: SILVER_BULLET_PARAMS,
+    outputs: [{ key: 'setups', label: 'Setups', style: 'zone' }],
+    compute: detectSilverBullet,
   },
 };
 

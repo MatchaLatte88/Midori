@@ -4,12 +4,12 @@ import assert from 'node:assert/strict';
 import {
   FIB_LEVELS, HIT_TOLERANCE, buildFromGesture, distanceToRay, distanceToRectEdge,
   distanceToSegment, fibPrices, gesturePoints, handleAt, hitTest, isInsideRect,
-  measureStats, pointsRequired, positionDirection, positionStats,
+  measureStats, pointsRequired, positionDirection, positionStats, snapAxis, snapToAxis,
 } from '../src/components/chart/drawings/geometry.js';
 import {
-  DEFAULT_POSITION_STYLE, DRAWING_TYPES, ENTRY, LEGACY_POSITION_TYPES,
-  MAX_FILL_OPACITY, STOP, TARGET, ZONE_COLORS, createDrawing, moveAnchor,
-  normalizeOpacity, parseDrawing, translateDrawing,
+  DEFAULT_LINE_STYLE, DEFAULT_POSITION_STYLE, DRAWING_TYPES, ENTRY, LEGACY_POSITION_TYPES,
+  LINE_STYLES, LINE_WIDTHS, MAX_FILL_OPACITY, STOP, TARGET, ZONE_COLORS, createDrawing,
+  dashPattern, moveAnchor, normalizeOpacity, normalizeWidth, parseDrawing, translateDrawing,
 } from '../src/components/chart/drawings/model.js';
 
 const SIZE = { width: 800, height: 400 };
@@ -506,4 +506,155 @@ test('moving one anchor leaves the other alone', () => {
   assert.deepEqual(edited.points[0], { time: 1000, price: 10 });
   assert.deepEqual(edited.points[1], { time: 3000, price: 30 });
   assert.throws(() => moveAnchor(d, 5, 0, 0), /out of range/);
+});
+
+/* ─── Axis snapping ─────────────────────────────────────────────────────── */
+
+test('the snap axis follows the longer pixel delta', () => {
+  assert.equal(snapAxis(40, 10), 'horizontal');
+  assert.equal(snapAxis(10, 40), 'vertical');
+  // Direction does not matter, only distance.
+  assert.equal(snapAxis(-40, 10), 'horizontal');
+  assert.equal(snapAxis(10, -40), 'vertical');
+  assert.equal(snapAxis(-5, -40), 'vertical');
+});
+
+test('a drag with no direction yet locks horizontal', () => {
+  /* One of the two has to be picked before the pointer has committed, and a
+   * line is the more useful guess than a zero-length vertical. */
+  assert.equal(snapAxis(0, 0), 'horizontal');
+  // A tie goes the same way.
+  assert.equal(snapAxis(20, 20), 'horizontal');
+});
+
+test('snapping horizontal keeps the anchor price and lets time run', () => {
+  const anchor = { time: 1000, price: 50 };
+  const point = { time: 5000, price: 80 };
+
+  const snapped = snapToAxis(anchor, point, 'horizontal');
+  assert.equal(snapped.price, 50, 'price is pinned to the anchor');
+  assert.equal(snapped.time, 5000, 'time still follows the pointer');
+});
+
+test('snapping vertical keeps the anchor time and lets price run', () => {
+  const anchor = { time: 1000, price: 50 };
+  const point = { time: 5000, price: 80 };
+
+  const snapped = snapToAxis(anchor, point, 'vertical');
+  assert.equal(snapped.time, 1000);
+  assert.equal(snapped.price, 80);
+});
+
+test('a snapped trend line has zero extent on the locked axis', () => {
+  /* What the feature is actually for: the two anchors end up level, so the
+   * line the renderer draws is exactly horizontal. */
+  const start = { time: 1000, price: 50 };
+  const end = snapToAxis(start, { time: 9000, price: 80 }, 'horizontal');
+  const [a, b] = buildFromGesture('trendline', start, end);
+
+  assert.equal(a.price, b.price, 'the line is level');
+  assert.notEqual(a.time, b.time, 'and still has length');
+});
+
+test('snapping never invents coordinates of its own', () => {
+  // Every value out is one of the two values in — nothing is averaged.
+  const anchor = { time: 111, price: 22 };
+  const point = { time: 999, price: 88 };
+
+  for (const axis of ['horizontal', 'vertical']) {
+    const snapped = snapToAxis(anchor, point, axis);
+    assert.ok([anchor.time, point.time].includes(snapped.time));
+    assert.ok([anchor.price, point.price].includes(snapped.price));
+  }
+});
+
+/* ─── Stroke styling ────────────────────────────────────────────────────── */
+
+test('a drawing carries the width and dash it was created with', () => {
+  const d = createDrawing('trendline', [{ time: 1, price: 1 }, { time: 2, price: 2 }], {
+    color: 'ind-2', width: 3, lineStyle: 'dashed',
+  });
+  assert.equal(d.color, 'ind-2');
+  assert.equal(d.width, 3);
+  assert.equal(d.lineStyle, 'dashed');
+});
+
+test('a drawing made without stroke options gets the defaults', () => {
+  const d = createDrawing('ray', [{ time: 1, price: 1 }, { time: 2, price: 2 }]);
+  assert.equal(d.width, DEFAULT_LINE_STYLE.width);
+  assert.equal(d.lineStyle, DEFAULT_LINE_STYLE.lineStyle);
+});
+
+test('an unusable width falls back rather than reaching the canvas', () => {
+  /* A width of 0 draws nothing and a negative one throws in some engines, so
+   * neither may survive a round trip from disk. */
+  for (const bad of [0, -2, 99, NaN, Infinity, null, undefined, 'thick']) {
+    assert.equal(normalizeWidth(bad), DEFAULT_LINE_STYLE.width, `width ${bad}`);
+  }
+  /* A fractional width rounds to the nearest offered one rather than falling
+   * back: 2.5 came from somewhere, and 3 is closer to that intent than 1. */
+  assert.equal(normalizeWidth(2.5), 3);
+  assert.equal(normalizeWidth(1.4), 1);
+  // Everything the bar offers survives untouched.
+  for (const w of LINE_WIDTHS) assert.equal(normalizeWidth(w), w);
+});
+
+test('an unknown dash draws solid rather than not at all', () => {
+  assert.deepEqual(dashPattern('solid'), []);
+  assert.deepEqual(dashPattern('nonsense'), []);
+  assert.deepEqual(dashPattern(undefined), []);
+  // The real patterns are non-empty, or they would not be dashes.
+  for (const style of LINE_STYLES.filter((x) => x.id !== 'solid')) {
+    assert.ok(dashPattern(style.id).length > 0, `${style.id} has no pattern`);
+  }
+});
+
+test('stroke settings survive create → parse', () => {
+  const made = createDrawing('rectangle', [{ time: 1, price: 1 }, { time: 9, price: 9 }], {
+    color: 'ind-3', width: 4, lineStyle: 'dotted',
+  });
+  const back = parseDrawing(JSON.parse(JSON.stringify(made)));
+
+  assert.equal(back.width, 4);
+  assert.equal(back.lineStyle, 'dotted');
+  assert.equal(back.color, 'ind-3');
+});
+
+test('a drawing saved before these fields existed still loads', () => {
+  /* The whole point of the fallbacks: an old file has no lineStyle and may
+   * have no width, and neither may cost the drawing. */
+  const old = { type: 'trendline', points: [{ time: 1, price: 1 }, { time: 2, price: 2 }] };
+  const parsed = parseDrawing(old);
+
+  assert.ok(parsed, 'an old drawing must still load');
+  assert.equal(parsed.width, DEFAULT_LINE_STYLE.width);
+  assert.equal(parsed.lineStyle, DEFAULT_LINE_STYLE.lineStyle);
+});
+
+test('a corrupt stroke setting costs the setting, not the drawing', () => {
+  const parsed = parseDrawing({
+    type: 'ray',
+    points: [{ time: 1, price: 1 }, { time: 2, price: 2 }],
+    width: 'very',
+    lineStyle: 'zigzag',
+  });
+
+  assert.ok(parsed);
+  assert.equal(parsed.width, DEFAULT_LINE_STYLE.width);
+  assert.equal(parsed.lineStyle, DEFAULT_LINE_STYLE.lineStyle);
+});
+
+test('every width and style the bar offers is one the model accepts', () => {
+  // The bar builds its buttons from these lists, so a mismatch would ship a
+  // control that silently does nothing.
+  for (const w of LINE_WIDTHS) {
+    const d = createDrawing('trendline', [{ time: 1, price: 1 }, { time: 2, price: 2 }], { width: w });
+    assert.equal(d.width, w);
+  }
+  for (const style of LINE_STYLES) {
+    const d = createDrawing('trendline', [{ time: 1, price: 1 }, { time: 2, price: 2 }], {
+      lineStyle: style.id,
+    });
+    assert.equal(d.lineStyle, style.id);
+  }
 });
