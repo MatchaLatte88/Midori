@@ -38,10 +38,19 @@
 import {
   FVG_PARAMS, IFVG_PARAMS, detectFairValueGaps, detectInvertedFairValueGaps,
 } from './fvg.js';
+import { SESSION_PARAMS, checkSession, computeSessions } from './sessions.js';
 
 /** Reusable schema fragment — the UI generates its input fields from this. */
-const periodParam = (def, label = 'Period') => ({
-  key: 'period', label, type: 'number', default: def, min: 1, max: 1000, step: 1,
+const periodParam = (def, label = 'Period', hint) => ({
+  key: 'period',
+  label,
+  type: 'number',
+  default: def,
+  min: 1,
+  max: 1000,
+  step: 1,
+  hint: hint ?? 'How many bars go into the window. Larger is smoother and slower '
+    + 'to turn; smaller reacts sooner and gives more false turns.',
 });
 
 const sourceParam = {
@@ -49,6 +58,8 @@ const sourceParam = {
   label: 'Source',
   type: 'select',
   default: 'close',
+  hint: 'Which price of each bar feeds the calculation. Close is the usual choice; '
+    + 'the averaged ones are steadier because a single wick moves them less.',
   options: [
     { value: 'close', label: 'Close' },
     { value: 'open', label: 'Open' },
@@ -174,7 +185,17 @@ export const INDICATORS = {
     pane: 'price',
     params: [
       periodParam(20),
-      { key: 'stddev', label: 'Std deviations', type: 'number', default: 2, min: 0.1, max: 5, step: 0.1 },
+      {
+        key: 'stddev',
+        label: 'Std deviations',
+        type: 'number',
+        default: 2,
+        min: 0.1,
+        max: 5,
+        step: 0.1,
+        hint: 'How far each band sits from the basis, measured in standard deviations '
+          + 'of the same window. At 2 the bands widen and narrow with volatility.',
+      },
       sourceParam,
     ],
     outputs: [
@@ -210,7 +231,11 @@ export const INDICATORS = {
     description: 'Relative strength index using Wilder smoothing.',
     pane: 'separate',
     scale: { min: 0, max: 100, guides: [30, 50, 70] },
-    params: [periodParam(14), sourceParam],
+    params: [
+      periodParam(14, 'Period', 'How many bars the strength is measured over. '
+        + 'Shorter reaches the 30 and 70 lines far more often.'),
+      sourceParam,
+    ],
     outputs: [{ key: 'value', label: 'RSI', style: 'line' }],
     compute(bars, { period = 14, source = 'close' } = {}) {
       const values = sourceValues(bars, source);
@@ -243,7 +268,8 @@ export const INDICATORS = {
     name: 'ATR',
     description: 'Average true range — the usual basis for stop distance.',
     pane: 'separate',
-    params: [periodParam(14)],
+    params: [periodParam(14, 'Period', 'How many bars the average range covers. '
+      + 'This is the number a stop distance is usually sized against.')],
     outputs: [{ key: 'value', label: 'ATR', style: 'line' }],
     compute(bars, { period = 14 } = {}) {
       const tr = trueRange(bars);
@@ -264,6 +290,8 @@ export const INDICATORS = {
       label: 'Reset',
       type: 'select',
       default: 'day',
+      hint: 'When the average starts over. Daily and weekly reset on UTC boundaries, '
+        + 'which is the right split for a market that never closes.',
       options: [
         { value: 'day', label: 'Daily' },
         { value: 'week', label: 'Weekly' },
@@ -316,6 +344,17 @@ export const INDICATORS = {
     outputs: [{ key: 'zones', label: 'IFVG', style: 'zone' }],
     compute: detectInvertedFairValueGaps,
   },
+
+  sessions: {
+    id: 'sessions',
+    name: 'Trading sessions',
+    description: 'Asia, London and New York — or your own, in their own time zones.',
+    pane: 'price',
+    kind: 'sessions',
+    params: SESSION_PARAMS,
+    outputs: [{ key: 'sessions', label: 'Sessions', style: 'zone' }],
+    compute: computeSessions,
+  },
 };
 
 /** UTC period identifier used to reset anchored indicators. */
@@ -349,6 +388,14 @@ export function computeIndicator(id, bars, params = {}) {
       if (p.min !== undefined && n < p.min) throw new Error(`${id}.${p.key}: ${n} is below ${p.min}`);
       if (p.max !== undefined && n > p.max) throw new Error(`${id}.${p.key}: ${n} is above ${p.max}`);
       merged[p.key] = n;
+    } else if (p.type === 'sessions') {
+      if (!Array.isArray(given)) {
+        throw new Error(`${id}.${p.key}: expected a list of sessions`);
+      }
+      // Validated here rather than in the detector, so a bad entry is refused
+      // at the edge with a message naming which one it was.
+      given.forEach((session, i) => checkSession(session, `${id}.${p.key}[${i}]`));
+      merged[p.key] = given;
     } else if (p.type === 'select' || p.type === 'color') {
       if (!p.options.some((o) => o.value === given)) {
         throw new Error(`${id}.${p.key}: "${given}" is not one of ${p.options.map((o) => o.value).join(', ')}`);

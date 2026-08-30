@@ -53,11 +53,11 @@ function paletteReader() {
  * neither, it runs to the right edge of the pane — cutting an unfilled zone off
  * at the last bar would read as "this ended here".
  *
- * The cap is measured from the bar that CONFIRMS the zone, not from the left
- * edge. For a fair value gap those sit two bars apart and it hardly matters;
- * for an inverted one the gap can predate its own break by hundreds of bars,
- * and counting from the left edge would end the box long before the level it
- * marks ever applied.
+ * The cap is measured from the box's own left edge — the bars that formed the
+ * gap. `3` is three bars wide, whichever indicator asked for it. For an
+ * inverted gap that means the box can stop well before the bar that broke the
+ * gap, since the two can be hundreds of bars apart; that is deliberate. The
+ * box marks the price level, and the level sits where the gap was.
  *
  * @param {object} zone                  from detectFairValueGaps
  * @param {object} view
@@ -73,9 +73,8 @@ export function boxExtent(zone, { boxWidth, barSpacing, indexToX, paneWidth }) {
   if (zone.mitigatedIndex != null) {
     limits.push(indexToX(zone.mitigatedIndex) + barSpacing / 2);
   }
-  // Half a bar past the confirming bar, plus the cap: `4` marks the four bars
-  // after the zone started to apply.
-  if (boxWidth > 0) limits.push(indexToX(zone.index) + (boxWidth + 0.5) * barSpacing);
+  // Counted from the box's own left edge, so `3` is a box three bars wide.
+  if (boxWidth > 0) limits.push(left + boxWidth * barSpacing);
 
   return { left, right: limits.length ? Math.min(...limits) : paneWidth };
 }

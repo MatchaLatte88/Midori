@@ -94,6 +94,7 @@
 
 const MITIGATIONS = ['touch', 'ce', 'full', 'break'];
 const INVERSIONS = ['close', 'wick'];
+const SIZE_UNITS = ['percent', 'points'];
 
 /**
  * Fair value gaps, with the bar that filled each one.
@@ -101,16 +102,19 @@ const INVERSIONS = ['close', 'wick'];
  * @param {Array<{time,open,high,low,close}>} bars ascending
  * @param {object} [params]
  * @param {'touch'|'ce'|'full'} [params.mitigation='full'] how far price must return
- * @param {number} [params.minSize=0]  smallest gap to report, in percent of its own price
+ * @param {number} [params.minSize=0]  smallest gap to report; 0 = no filter
+ * @param {'percent'|'points'} [params.minSizeUnit='percent'] how to read minSize
  * @param {'open'|'all'} [params.show='open']  drop mitigated zones, or keep them
  * @param {number} [params.lookback=0]  only zones confirmed within the last N bars; 0 = all
  * @returns {{zones: Array<object>}}
  */
 export function detectFairValueGaps(bars, params = {}) {
-  const { mitigation = 'full', minSize = 0, show = 'open', lookback = 0 } = params;
-  check(bars, 'detectFairValueGaps', mitigation);
+  const {
+    mitigation = 'full', minSize = 0, minSizeUnit = 'percent', show = 'open', lookback = 0,
+  } = params;
+  check(bars, 'detectFairValueGaps', mitigation, minSizeUnit);
 
-  const zones = findGaps(bars, minSize);
+  const zones = findGaps(bars, minSize, minSizeUnit);
   applyMitigation(bars, zones, mitigation);
   return { zones: report(zones, bars.length, show, lookback) };
 }
@@ -129,22 +133,26 @@ export function detectInvertedFairValueGaps(bars, params = {}) {
     /* Two defaults differ from a plain gap's, both for the same reason — an
      * inversion is an event with a lifetime, not a standing level. Must stay
      * in step with IFVG_PARAMS below; a test holds the two together. */
-    mitigation = 'break', minSize = 0, show = 'all', lookback = 0, inversion = 'close',
+    mitigation = 'break', minSize = 0, minSizeUnit = 'percent', show = 'all',
+    lookback = 0, inversion = 'close',
   } = params;
-  check(bars, 'detectInvertedFairValueGaps', mitigation);
+  check(bars, 'detectInvertedFairValueGaps', mitigation, minSizeUnit);
   if (!INVERSIONS.includes(inversion)) {
     throw new Error(`detectInvertedFairValueGaps: unknown inversion "${inversion}"`);
   }
 
-  const zones = invert(bars, findGaps(bars, minSize), inversion);
+  const zones = invert(bars, findGaps(bars, minSize, minSizeUnit), inversion);
   applyMitigation(bars, zones, mitigation);
   return { zones: report(zones, bars.length, show, lookback) };
 }
 
-function check(bars, name, mitigation) {
+function check(bars, name, mitigation, minSizeUnit) {
   if (!Array.isArray(bars)) throw new Error(`${name}: bars must be an array`);
   if (!MITIGATIONS.includes(mitigation)) {
     throw new Error(`${name}: unknown mitigation "${mitigation}"`);
+  }
+  if (!SIZE_UNITS.includes(minSizeUnit)) {
+    throw new Error(`${name}: unknown minSizeUnit "${minSizeUnit}"`);
   }
 }
 
@@ -152,7 +160,7 @@ function check(bars, name, mitigation) {
  * Every three-bar gap in the array, in the order they formed, with no opinion
  * about what happened to them afterwards.
  */
-function findGaps(bars, minSize) {
+function findGaps(bars, minSize, minSizeUnit) {
   const gaps = [];
 
   for (let i = 2; i < bars.length; i++) {
@@ -174,13 +182,7 @@ function findGaps(bars, minSize) {
       continue;
     }
 
-    // Percent of the gap's own price level, so one threshold works for BTC at
-    // 100k and for an altcoin at 0.00001.
-    if (minSize > 0) {
-      const mid = (top + bottom) / 2;
-      if (!(mid > 0)) continue;
-      if (((top - bottom) / mid) * 100 < minSize) continue;
-    }
+    if (minSize > 0 && !bigEnough(top, bottom, minSize, minSizeUnit)) continue;
 
     gaps.push({
       direction,
@@ -197,6 +199,25 @@ function findGaps(bars, minSize) {
   }
 
   return gaps;
+}
+
+/**
+ * Whether a gap clears the minimum size, in whichever unit was asked for.
+ *
+ * Percent measures against the gap's own price level, so one threshold works
+ * for BTC at 100k and for an altcoin at 0.00001 — and keeps meaning the same
+ * thing as price moves. Points measure the raw distance in whatever the
+ * instrument is quoted in, which is what someone reads off their own chart and
+ * what a fixed stop is sized in. Neither is right for every market, hence both.
+ */
+function bigEnough(top, bottom, minSize, minSizeUnit) {
+  const height = top - bottom;
+  if (minSizeUnit === 'points') return height >= minSize;
+
+  const mid = (top + bottom) / 2;
+  // A percentage of nothing is not a filter that can be applied.
+  if (!(mid > 0)) return false;
+  return (height / mid) * 100 >= minSize;
 }
 
 /**
@@ -331,8 +352,8 @@ export const ZONE_PALETTE = [
   { value: 'ind-3', label: 'Pink' },
 ];
 
-const colorParam = (key, label, def) => ({
-  key, label, type: 'color', default: def, options: ZONE_PALETTE,
+const colorParam = (key, label, def, hint) => ({
+  key, label, type: 'color', default: def, options: ZONE_PALETTE, hint,
 });
 
 /** The settings both detectors share. */
@@ -342,6 +363,9 @@ const commonParams = [
     label: 'Filled when',
     type: 'select',
     default: 'full',
+    hint: 'How far price has to come back before the zone counts as used up. '
+      + 'The first three end it as soon as price reaches into it; "Closed beyond" '
+      + 'needs a bar to close past it, so a retest leaves the zone standing.',
     options: [
       { value: 'full', label: 'Fully crossed' },
       { value: 'ce', label: 'Midpoint (CE)' },
@@ -354,22 +378,71 @@ const commonParams = [
     label: 'Show',
     type: 'select',
     default: 'open',
+    hint: 'Whether zones that are already filled stay on the chart. Their box '
+      + 'stops where they ended, so they mark the stretch on which they applied '
+      + 'rather than running on to the right edge.',
     options: [
       { value: 'open', label: 'Unfilled only' },
       { value: 'all', label: 'Including filled' },
     ],
   },
-  { key: 'minSize', label: 'Min size %', type: 'number', default: 0, min: 0, max: 100, step: 0.05 },
+  /* One value, two readings. The bound has to cover both, so it is wide enough
+   * for a points figure on an index; the unit says how to read it. */
+  {
+    key: 'minSize',
+    label: 'Min size',
+    type: 'number',
+    default: 0,
+    min: 0,
+    max: 1e6,
+    step: 0.05,
+    hint: 'Ignore zones thinner than this. 0 keeps every one of them.',
+  },
+  {
+    key: 'minSizeUnit',
+    label: 'Measured in',
+    type: 'select',
+    default: 'percent',
+    hint: 'How to read the minimum size. Percent measures against the price level '
+      + 'the zone sits at, so it keeps meaning the same as price moves; points measure '
+      + 'the raw distance in whatever the instrument is quoted in.',
+    options: [
+      { value: 'percent', label: 'Percent' },
+      { value: 'points', label: 'Points' },
+    ],
+  },
   /* Zero means "no limit" on both of these — the setting is off, rather than
    * set to something. Anything else would need a second control to say so. */
-  { key: 'lookback', label: 'Last bars', type: 'number', default: 0, min: 0, max: 5000, step: 10 },
-  { key: 'boxWidth', label: 'Box width', type: 'number', default: 0, min: 0, max: 500, step: 1 },
+  {
+    key: 'lookback',
+    label: 'Last bars',
+    type: 'number',
+    default: 0,
+    min: 0,
+    max: 5000,
+    step: 10,
+    hint: 'Only show zones confirmed within this many of the most recent bars, '
+      + 'counted back from the newest one. 0 means no limit.',
+  },
+  {
+    key: 'boxWidth',
+    label: 'Box width',
+    type: 'number',
+    default: 0,
+    min: 0,
+    max: 500,
+    step: 1,
+    hint: 'How many bars wide the box is drawn, counted from the bars that formed '
+      + 'the gap. 0 runs it on to the right edge until something ends it.',
+  },
 ];
 
 export const FVG_PARAMS = [
   ...commonParams,
-  colorParam('bullColor', 'Bull', 'candle-up-brd'),
-  colorParam('bearColor', 'Bear', 'candle-down-body'),
+  colorParam('bullColor', 'Bull', 'candle-up-brd',
+    'Colour for gaps left behind by a move up, which sit below price as support.'),
+  colorParam('bearColor', 'Bear', 'candle-down-body',
+    'Colour for gaps left behind by a move down, which sit above price as resistance.'),
 ];
 
 /* An IFVG defaults to indicator colours rather than the candle tones, because
@@ -385,6 +458,9 @@ export const IFVG_PARAMS = [
     label: 'Broken by',
     type: 'select',
     default: 'close',
+    hint: 'What counts as breaking a gap, and so as flipping it. A close beyond '
+      + 'the gap is acceptance of those prices; a wick through it is a probe that '
+      + 'was rejected.',
     options: [
       { value: 'close', label: 'A close beyond' },
       { value: 'wick', label: 'A wick beyond' },
@@ -393,6 +469,8 @@ export const IFVG_PARAMS = [
   invertedMitigation,
   invertedShow,
   ...commonParams.slice(2),
-  colorParam('bullColor', 'Bull', 'ind-2'),
-  colorParam('bearColor', 'Bear', 'ind-1'),
+  colorParam('bullColor', 'Bull', 'ind-2',
+    'Colour for bearish gaps that failed and now read as support.'),
+  colorParam('bearColor', 'Bear', 'ind-1',
+    'Colour for bullish gaps that failed and now read as resistance.'),
 ];

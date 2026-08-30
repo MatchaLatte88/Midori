@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   INDICATORS, computeIndicator, ema, sma, sourceValues, trueRange,
 } from '../shared/indicators/index.js';
+import { VOLUME_PROFILE_PARAMS } from '../shared/indicators/volumeProfile.js';
 
 const MIN = 60_000;
 
@@ -40,8 +41,9 @@ test('ema returns all nulls when there is not enough data', () => {
 test('outputs always align one-to-one with the bars', () => {
   const bars = barsFromCloses([10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
   for (const [id, spec] of Object.entries(INDICATORS)) {
-    // Zone indicators describe regions, not one value per bar — see fvg.test.js.
-    if (spec.kind === 'zones') continue;
+    /* Anything with a `kind` describes regions of the chart rather than one
+     * value per bar — zones in fvg.test.js, sessions in sessions.test.js. */
+    if (spec.kind) continue;
     const result = computeIndicator(id, bars);
     for (const [key, series] of Object.entries(result)) {
       assert.equal(series.length, bars.length, `${id}.${key} length must match bars`);
@@ -166,4 +168,29 @@ test('an omitted param falls back to its declared default', () => {
   const explicit = computeIndicator('sma', bars, { period: 20 });
   const implicit = computeIndicator('sma', bars);
   assert.deepEqual(implicit.value, explicit.value);
+});
+
+test('every parameter carries an explanation for its tooltip', () => {
+  /* The panel builds both the field and its tooltip from this schema, so a
+   * parameter without a hint ships as a control nobody can interpret. Checked
+   * here rather than left to review: the failure is silent in the UI. */
+  const missing = [];
+  for (const spec of Object.values(INDICATORS)) {
+    for (const p of spec.params) {
+      if (!p.hint?.trim()) missing.push(`${spec.id}.${p.key}`);
+    }
+    if (!spec.description?.trim()) missing.push(`${spec.id} (description)`);
+  }
+  for (const p of VOLUME_PROFILE_PARAMS) {
+    if (!p.hint?.trim()) missing.push(`volumeProfile.${p.key}`);
+  }
+  assert.deepEqual(missing, [], `parameters with no hint: ${missing.join(', ')}`);
+});
+
+test('a hint explains the setting rather than restating its label', () => {
+  for (const spec of Object.values(INDICATORS)) {
+    for (const p of spec.params) {
+      assert.ok(p.hint.length > p.label.length + 20, `${spec.id}.${p.key}: hint is too thin`);
+    }
+  }
 });

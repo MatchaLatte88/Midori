@@ -284,24 +284,60 @@ export const VOLUME_PROFILE_PARAMS = [
     label: 'Show',
     type: 'select',
     default: 'total',
+    hint: 'What each row means: all volume traded at that level, the buy and sell '
+      + 'sides stacked inside it, or only the difference between the two. Falls back '
+      + 'to total volume when the data carries no buy/sell split.',
     options: [
       { value: 'total', label: 'Total volume' },
       { value: 'buysell', label: 'Buy vs sell' },
       { value: 'delta', label: 'Delta only' },
     ],
   },
-  { key: 'bins', label: 'Price levels', type: 'number', default: 120, min: 10, max: 500, step: 10 },
-  { key: 'valueArea', label: 'Value area %', type: 'number', default: 70, min: 30, max: 95, step: 5 },
+  {
+    key: 'bins',
+    label: 'Price levels',
+    type: 'number',
+    default: 120,
+    min: 10,
+    max: 500,
+    step: 10,
+    hint: 'How many slices the price range is cut into. More levels place the point '
+      + 'of control more precisely but break the shape up into noise.',
+  },
+  {
+    key: 'valueArea',
+    label: 'Value area %',
+    type: 'number',
+    default: 70,
+    min: 30,
+    max: 95,
+    step: 5,
+    hint: 'How much of the traded volume the value area has to hold. It grows out '
+      + 'from the point of control, always taking the heavier side next.',
+  },
   {
     key: 'distribution',
     label: 'Volume spread',
     type: 'select',
     default: 'uniform',
+    hint: 'A bar does not record which price each trade happened at, so its volume '
+      + 'has to be spread over its range. Midori profiles 1-minute bars, so that '
+      + 'range is small and the choice matters less than it would on a 4h chart.',
     options: [
       { value: 'uniform', label: 'Across the bar range' },
       { value: 'close', label: 'At the close' },
       { value: 'ohlc', label: 'Split over O/H/L/C' },
     ],
   },
-  { key: 'width', label: 'Width %', type: 'number', default: 30, min: 5, max: 90, step: 5 },
+  {
+    key: 'width',
+    label: 'Width %',
+    type: 'number',
+    default: 30,
+    min: 5,
+    max: 90,
+    step: 5,
+    hint: 'How much of the chart width the busiest level may take. Purely how it is '
+      + 'drawn — it changes nothing about the profile underneath.',
+  },
 ];

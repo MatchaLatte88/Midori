@@ -66,8 +66,12 @@ Minuten.
 ## Indikatoren
 
 Vorhanden sind SMA, EMA, Bollinger Bands, RSI, ATR, VWAP, Fair Value Gaps, Inverted Fair
-Value Gaps und das Volume Profile mit POC und Value Area. Oszillatoren bekommen eine eigene Chart-Ebene, damit eine
+Value Gaps, Handelssessions und das Volume Profile mit POC und Value Area — als festes Profil
+am rechten Rand und als **Range Profile**, das du über eine selbst gezogene Spanne legst. Oszillatoren bekommen eine eigene Chart-Ebene, damit eine
 0–100-Skala nie mit Preisen zusammengelegt wird.
+
+Jede Einstellung erklärt sich selbst: Fahre mit der Maus über ein Feld im Indikator-Panel,
+und der Tooltip sagt, was der Wert bewirkt.
 
 Zwei Dinge sind dabei bewusst so gebaut:
 
@@ -78,11 +82,15 @@ Zwei Dinge sind dabei bewusst so gebaut:
   überhaupt bekannt war. Nur so kann eine Strategie sie nicht zwei Bars zu früh handeln.
   Wann eine Lücke als gefüllt gilt (Berührung, Mittellinie, ganz durchlaufen), stellst du
   selbst ein — ebenso, ob nur die Lücken der letzten N Bars gezeigt werden und wie breit die
-  Box gezeichnet wird. 0 heißt bei beiden „kein Limit". **Inverted FVGs** sind Lücken, durch
+  Box gezeichnet wird. 0 heißt bei beiden „kein Limit". Die Mindestgröße einer Zone gibst du
+  wahlweise in Prozent oder in Punkten an. **Inverted FVGs** sind Lücken, durch
   die der Preis geschlossen hat: aus gescheiterter Unterstützung wird Widerstand. Sie
   verschwinden nicht, wenn der Preis sie testet — das ist ihr Zweck —, sondern erst, wenn er
   jenseits von ihnen schließt. Beide Indikatoren lesen dieselbe Lückendefinition, und beide
   Farben wählst du selbst.
+- **Sessions** (Asia, London, New York — als Futures- oder Forex-Satz, oder selbst
+  definiert) kennen die Zeitzone ihres Marktes, nicht eine feste UTC-Stunde. Wenn irgendwo
+  die Uhren umgestellt werden, wandert die Session mit.
 - Das **Volume Profile rechnet immer auf 1m-Bars**, egal welchen Timeframe der Chart zeigt.
   Wer stattdessen die angezeigten Bars profiliert, bekommt auf dem 4h-Chart einen anderen
   POC als auf dem 5m-Chart.

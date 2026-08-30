@@ -51,6 +51,12 @@ const tools = computed(() => TOOLS);
         </template>
         <!-- Rectangle -->
         <rect v-else-if="tool.icon === 'rectangle'" x="4" y="6" width="16" height="12" rx="1" />
+
+        <!-- A bracketed span with a histogram inside it. -->
+        <template v-else-if="tool.icon === 'rangeprofile'">
+          <path d="M4 4v16M20 4v16" />
+          <path d="M7 8h7M7 12h10M7 16h4" />
+        </template>
         <!-- Fib: stacked levels -->
         <template v-else-if="tool.icon === 'fib'">
           <path d="M4 6h16M4 10h16M4 14h16M4 18h16" />

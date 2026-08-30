@@ -173,6 +173,13 @@ Look-Ahead hier nicht einschleichen kann: Die Engine übergibt einer Strategie d
 Jeder Indikator exportiert ein deklaratives `params`-Schema; das Panel baut daraus seine
 Eingabefelder. Neuer Indikator = ein Eintrag in `INDICATORS`, keine UI-Änderung.
 
+Jeder Parameter trägt zusätzlich ein `hint` — die Erklärung, die im Panel als Tooltip am Feld
+hängt. Sie steht im selben Schema wie das Feld selbst, damit ein neuer Parameter nicht ohne
+seine Erklärung ankommen kann; ein Test in `test/indicators.test.js` besteht darauf, dass
+jeder Parameter einen hat und dass er mehr sagt als sein eigenes Label. Ein Regler, den
+niemand deuten kann, ist in einem Werkzeug für Handelsentscheidungen kein kosmetisches
+Problem.
+
 Es gibt eine zweite Ausgabeform. Manche Indikatoren beschreiben keine Zahl je Bar, sondern
 einen *Bereich* des Charts: ein Preisband, das an einer Bar beginnt und endet, wenn der Preis
 zurückkommt. Die deklarieren `kind: 'zones'` und liefern
@@ -185,7 +192,47 @@ Serien-Indikatoren lassen `kind` weg — das ist der Normalfall. Der Chart legt 
 Serie an, sondern schiebt sie in ein Pane-Primitive.
 
 Vorhanden: SMA, EMA, Bollinger Bands, RSI, ATR, VWAP (täglich/wöchentlich verankert),
-Fair Value Gaps und Inverted Fair Value Gaps.
+Fair Value Gaps, Inverted Fair Value Gaps und Handelssessions.
+
+### Bar-Zeiten sind Millisekunden
+
+Der Chart hält Bars in **Sekunden**, weil die Series-API das so will. Jeder Indikator, der
+einen Kalender liest — Sessions, ein verankerter VWAP —, braucht **Millisekunden**. Bekommt
+er Sekunden, landet jede Bar im Januar 1970: Die Zahlen sehen weiter wie Zeitstempel aus, die
+Ausgabe weiter wie ein Indikator, und die Sessions liegen alle am falschen Tag.
+
+`ChartPanel` rechnet deshalb einmal pro Render eine Millisekunden-Kopie (`indicatorBars`) und
+übergibt ausschließlich die. Das war zugleich ein stiller Fehler: Der VWAP-Anker
+„täglich"/„wöchentlich" setzte im Chart **nie** zurück und war identisch mit „ganzer
+Bereich" — der Tageswechsel wäre erst nach 86.400.000 Sekunden-Einheiten gekommen, also alle
+2,7 Jahre. Beides ist mit derselben Zeile erledigt.
+
+### Handelssessions
+
+Eine Session ist ein Fenster in der **lokalen Zeit ihres Marktes**, und genau darin liegt die
+Schwierigkeit. London läuft 08:00–17:00 London — im Winter 07:00–16:00 UTC, im Sommer eine
+Stunde anders —, und Großbritannien, die USA und Australien stellen die Uhren an
+verschiedenen Wochenenden um. Ein paar Wochen im Jahr liegt eine in festen UTC-Stunden
+definierte Session schlicht falsch.
+
+Sessions tragen deshalb eine **IANA-Zone** und werden über `Intl` gelesen, das jede dieser
+Regeln kennt und weiter kennt, wenn sie sich ändern. Keine Offset-Tabelle in der Datei und
+keine zu pflegen. Abgesichert in `test/sessions.test.js`: dieselbe London-Session liegt im
+August auf 07:00 UTC und im Januar auf 08:00 UTC — eine Fixed-Offset-Lösung gäbe zweimal
+dieselbe Stunde zurück.
+
+Ein Fenster über Mitternacht (Asien) bleibt **ein** Block: Die Zuordnung erfolgt über den
+lokalen Tag, an dem die Session *begonnen* hat, sonst zerfiele Tokio jede Nacht in zwei
+Stücke mit einer Lücke dazwischen, die es nie gab.
+
+Voreingestellt sind zwei Sätze — Futures (Asien/London/New York) und Forex (die klassischen
+vier Zentren) — und eigene lassen sich im Panel anlegen: Name, Zone, Fenster, Farbe. Der
+Parametertyp `sessions` ist eine Liste statt eines Skalars; validiert wird sie beim Eintragen
+in `computeIndicator`, mit einer Meldung, die den fehlerhaften Eintrag benennt.
+
+Die Suche beginnt am `days`-Fenster statt bei Bar 0. Eine Wanduhr abzulesen kostet einen
+Intl-Zugriff pro Bar und Session; drei Jahre zu durchlaufen, um fünf Tage zu zeichnen, sind
+81 ms gegen 8 ms für dasselbe Ergebnis.
 
 ### Fair Value Gaps
 
@@ -211,6 +258,12 @@ encroachment*), `full` (ganz durchlaufen), `break` (jenseits **schließen**). Ge
 bestätigenden Bar — die Bar, die eine Lücke erzeugt, kann sie nicht füllen, wie weit ihr
 Docht auch reicht. Unter `touch` wäre genau das sonst der Normalfall, denn die nahe Kante
 *ist* ihr eigenes Low.
+
+`minSize` misst wahlweise in **Prozent oder in Punkten** (`minSizeUnit`). Prozent misst gegen
+das Preisniveau, auf dem die Zone liegt, und bedeutet damit dasselbe, während der Preis läuft;
+Punkte messen den rohen Abstand in der Notierung des Instruments — das, was man vom eigenen
+Chart abliest und worin ein fester Stop bemessen ist. Keine der beiden Einheiten passt auf
+jeden Markt, deshalb beide.
 
 **Was angezeigt wird**, ist von **wie breit** getrennt. `minSize` und `lookback` (nur Lücken
 aus den letzten N Bars) verengen, *welche* Zonen überhaupt gemeldet werden — beides ist auch
@@ -270,11 +323,11 @@ es auch, wer es sucht — bestätigt aber erst auf der brechenden Bar. Auf einem
 liegen dazwischen im Median 14 Bars, im Extremfall 890. Das Bild reicht zurück; was eine
 Strategie handeln darf, nicht.
 
-Genau dieser Abstand zwingt die Box-Breite dazu, **ab der bestätigenden Bar** zu zählen und
-nicht ab der linken Kante. Bei einer FVG liegen beide zwei Bars auseinander und es fällt
-nicht auf; bei einer IFVG hätte `Box width = 4` die Box 886 Bars vor dem Bruch enden lassen —
-das Rechteck stünde vollständig in der Vergangenheit, bevor das Niveau je galt. Festgehalten
-in `test/fvgPrimitive.test.js`.
+Die Box-Breite zählt für beide Indikatoren **ab der linken Kante** — den Bars, die die Lücke
+gebildet haben. `3` ergibt eine drei Bars breite Box, egal welcher Indikator sie anfordert.
+Bei einer IFVG kann sie damit lange vor der brechenden Bar enden, und das ist so gewollt: Die
+Box markiert das Preisniveau, und das Niveau liegt dort, wo die Lücke war. Festgehalten in
+`test/fvgPrimitive.test.js`.
 
 **Eine Inversion stirbt nicht am Rücktest.** Die ersten drei Mitigationsregeln beenden eine
 Zone, sobald der Preis in sie zurückkehrt. Für eine Lücke ist das genau richtig — die
@@ -443,6 +496,25 @@ nichts über den Rand hinaus und nichts verdeckt etwas anderes — eine frühere
 Sitzt der Stop auf dem Entry, ist das Verhältnis `null` statt unendlich — es gibt dann kein
 Risiko, durch das sich teilen ließe.
 
+### Range Volume Profile
+
+Ein Werkzeug, kein Indikator: Man zieht eine Spanne auf, und darüber liegt ein Volume Profile
+genau dieses Zeitraums. Gerechnet wird es wie das Panel-Profil im Main-Prozess aus 1m-Bars —
+dieselbe Funktion, dieselben Bins, nur ein anderes Fenster.
+
+**Senkrecht zählt die Spanne nicht.** Die zwei Anker legen die Zeit fest; die Box wird auf die
+Preisspanne gezeichnet, die die Bars darin tatsächlich abgedeckt haben. Die Höhe des Ziehens
+zu respektieren würde jeden Trade darüber und darunter stillschweigend verwerfen — und ein
+Profil, dem Volumen fehlt, setzt seinen POC an die falsche Stelle, also genau den einen Wert,
+für den das Werkzeug existiert.
+
+Gezeichnet wird in zwei Schichten: Die Spanne selbst gehört zu den Zeichnungen und liegt
+**über** den Kerzen (der Nutzer hat sie dorthin gesetzt), das Histogramm liegt als eigenes
+Primitive **darunter** (eine Verteilung ist Kontext). Ergebnisse werden pro Fenster
+zwischengespeichert; der Schlüssel enthält Spanne *und* Bin-Einstellungen, und beim Ziehen
+werden Schlüssel, die niemand mehr braucht, sofort verworfen — sonst wüchse die Map, solange
+die Maustaste gedrückt ist.
+
 ### Ankerpunkte sind Markt-, keine Bildschirmkoordinaten
 
 Jede Zeichnung speichert `(time, price)`-Paare. Eine auf dem 15m-Chart gezogene Trendlinie muss
@@ -581,6 +653,29 @@ damit ein Theme-Wechsel keine zweite Farbliste pflegen muss.
 
 Klassen `k-panel`, `k-eyebrow`, `k-mono-label`, `k-chip`, `k-note`, `.btn`, `.primary-btn`,
 `.icon-btn` — vor jeder neuen Klasse prüfen, ob eine davon passt.
+
+### Hover-Hinweise
+
+`title` ist als Tooltip aufgegeben: Es lässt sich nicht gestalten, erscheint erst nach etwa
+einer halben Sekunde und wird vom Betriebssystem gezeichnet statt von der App. In einem Panel,
+in dem jeder Regler eine Erklärung braucht, liest sich das wie nachträglich angeklebt.
+
+Stattdessen `src/hints.js` (Direktive `v-hint`) plus **eine** `HintTooltip`-Fläche nahe der
+Wurzel. Eine statt einer pro Feld, weil das Seitenpanel scrollt (`overflow-y: auto`) — ein
+Tooltip darin würde exakt an der Kante abgeschnitten, an der es erscheinen muss, denn das
+Panel klebt am Fensterrand. Die eine Fläche liegt `position: fixed` in Viewport-Koordinaten
+und wählt die Seite mit mehr Platz, überlebt also auch ein schmales Fenster.
+
+Gestaltet als kleineres Geschwister von `.k-panel`: derselbe Gradient, dieselbe 1px-Linie,
+derselbe Schatten, eine Radius-Stufe kleiner. Kein Blur — die Sprache benutzt Gradient-
+Flächen, und über dem Chart würde Blur den Kursverlauf verschmieren. Der Kopf ist ein
+`k-mono-label` in Akzentfarbe: dieselbe Rolle wie das Eyebrow einer Sektion, nur kleiner.
+
+Der Text kommt aus dem `hint`-Feld des Indikator-Schemas (Abschnitt 6), nicht aus dem Markup —
+eine Erklärung, die neben ihrer Definition steht, veraltet seltener als eine im Template.
+`test/components.test.js` prüft, dass jede im Template benutzte Direktive in `main.js`
+registriert ist: Eine fehlende Registrierung baut sauber durch und fällt erst beim Rendern
+auf, genau wie ein Binding, das das Setup nie exportiert hat.
 
 ### Hell und Dunkel
 

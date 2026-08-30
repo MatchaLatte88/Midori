@@ -1,6 +1,40 @@
 {
   "releases": [
     {
+      "version": "v0.1.3-dev",
+      "date": "Aug 2026",
+      "changes": [
+        {
+          "type": "feat",
+          "text": "A range volume profile you draw yourself: pick the tool, drag across a stretch of chart, and the volume traded in it is profiled over that span. Built from the same 1-minute bars as the profile on the right, so both agree about where price actually changed hands"
+        },
+        {
+          "type": "feat",
+          "text": "Trading sessions on the chart — Asia, London and New York as a futures set, the four classic centres as a forex set, or your own with a name, a time zone and a window. Each session knows the local time of its market, so when the clocks change somewhere the session moves with them instead of drifting an hour off"
+        },
+        {
+          "type": "feat",
+          "text": "Every indicator setting now explains itself on hover, in the app's own style rather than a system tooltip. The text sits with the setting it describes, so a new option cannot arrive without one"
+        },
+        {
+          "type": "feat",
+          "text": "The minimum size for fair value gaps reads as points as well as percent. Percent keeps its meaning as price moves; points are what you read off your own chart and size a stop in"
+        },
+        {
+          "type": "fix",
+          "text": "The VWAP reset — daily or weekly — never actually happened on the chart. Bar times reached the calculation as seconds where a calendar date was expected, which put every bar in 1970 and made both anchors behave like 'whole range'"
+        },
+        {
+          "type": "fix",
+          "text": "Inverted fair value gaps were nearly all missing. A retest was counted as using the zone up, when a retest is the reason it is drawn; and a zone that had been broken again was dropped from the stretch of chart where it applied. Both are corrected, and a month of BTC now shows 41 open inversions where it showed 28"
+        },
+        {
+          "type": "style",
+          "text": "The width of a fair value gap box is counted from the bars that formed the gap, so a width of 3 is three candles wide wherever the gap ends up being broken"
+        }
+      ]
+    },
+    {
       "version": "v0.1.2-dev",
       "date": "Aug 2026",
       "changes": [

@@ -4,6 +4,7 @@ import ChartPanel from './components/ChartPanel.vue';
 import DataManager from './components/DataManager.vue';
 import IndicatorPanel from './components/IndicatorPanel.vue';
 import ChangelogModal from './components/ChangelogModal.vue';
+import HintTooltip from './components/HintTooltip.vue';
 import { APP_VERSION } from './generated/version.js';
 import {
   initTheme, refreshDatasets, session, setError, setThemeMode, setTimeframe,
@@ -32,6 +33,9 @@ onMounted(async () => {
 
 <template>
   <div class="ambient"></div>
+
+  <!-- One surface for every hover hint in the app; see hints.js. -->
+  <HintTooltip />
 
   <header class="topbar">
     <button class="brand" title="Release notes" @click="changelogOpen = true">

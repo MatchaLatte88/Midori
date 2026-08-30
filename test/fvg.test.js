@@ -404,3 +404,38 @@ test('an inversion that was broken again stays in the output', () => {
   // A plain gap keeps the opposite default: a filled gap is genuinely gone.
   assert.ok(detectFairValueGaps(rows).zones.every((z) => z.mitigatedIndex === null));
 });
+
+test('minSize reads as points when asked to', () => {
+  // The gap is [10, 12]: two points tall, about 18.2% of the price it sits at.
+  const rows = bars(BULL);
+  const n = (params) => detectFairValueGaps(rows, params).zones.length;
+
+  assert.equal(n({ minSize: 2, minSizeUnit: 'points' }), 1);
+  assert.equal(n({ minSize: 2.5, minSizeUnit: 'points' }), 0);
+  // The same number means something entirely different in the other unit.
+  assert.equal(n({ minSize: 2, minSizeUnit: 'percent' }), 1);
+  assert.equal(n({ minSize: 19, minSizeUnit: 'percent' }), 0);
+  assert.equal(n({ minSize: 19, minSizeUnit: 'points' }), 0);
+
+  // Zero is off in either unit.
+  assert.equal(n({ minSize: 0, minSizeUnit: 'points' }), 1);
+});
+
+test('inverted gaps take the points filter too', () => {
+  const rows = bars(BREAKS_BULL);
+  const n = (params) => detectInvertedFairValueGaps(rows, params).zones.length;
+  assert.equal(n({ minSize: 2, minSizeUnit: 'points' }), 1);
+  assert.equal(n({ minSize: 2.5, minSizeUnit: 'points' }), 0);
+});
+
+test('an unknown size unit is refused rather than guessed', () => {
+  assert.throws(
+    () => detectFairValueGaps(bars(BULL), { minSizeUnit: 'pips' }),
+    /unknown minSizeUnit/,
+  );
+  assert.throws(
+    () => detectInvertedFairValueGaps(bars(BULL), { minSizeUnit: 'ticks' }),
+    /unknown minSizeUnit/,
+  );
+  assert.throws(() => computeIndicator('fvg', bars(BULL), { minSizeUnit: 'pips' }), /not one of/);
+});

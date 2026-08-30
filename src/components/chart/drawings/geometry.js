@@ -126,6 +126,10 @@ export function hitTest(type, pts, at, size) {
       return b ? distanceToRay(at.x, at.y, a.x, a.y, b.x, b.y) <= HIT_TOLERANCE : false;
 
     case 'rectangle':
+    /* A range profile is grabbed over its whole span too. Its box is drawn to
+     * the height of the data rather than to the anchors, but the anchors are
+     * what the pointer tests against — they are where the handles are. */
+    case 'rangeprofile':
       if (!b) return false;
       // The edge is always grabbable; the fill only inside.
       return distanceToRectEdge(at.x, at.y, a.x, a.y, b.x, b.y) <= HIT_TOLERANCE
@@ -184,6 +188,7 @@ export function pointsRequired(type) {
     case 'rectangle':
     case 'fib':
     case 'measure':
+    case 'rangeprofile':
       return 2;
     case 'position':
     // 'long' and 'short' are the pre-0.1.1 names for the same shape; kept so

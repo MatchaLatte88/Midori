@@ -53,3 +53,33 @@ test('no template reads a name its script never defines', () => {
     assert.deepEqual(unresolved, [], `${name} uses undefined: ${unresolved.join(', ')}`);
   }
 });
+
+test('every custom directive a template uses is registered', () => {
+  /* Same failure shape as an undefined binding: Vue compiles `v-hint` to a
+   * _resolveDirective call, the build stays green, and the app only complains
+   * at render time. Directives are registered in main.js, so that is the list
+   * to check against. */
+  const main = readFileSync(path.join(import.meta.dirname, '..', 'src', 'main.js'), 'utf8');
+  const registered = new Set(
+    [...main.matchAll(/\.directive\(\s*['"]([\w-]+)['"]/g)].map((m) => m[1]),
+  );
+
+  for (const file of sfcFiles(COMPONENTS)) {
+    const { descriptor } = parse(readFileSync(file, 'utf8'), { filename: file });
+    if (!descriptor.template) continue;
+
+    const { code } = compileTemplate({
+      filename: file,
+      id: file,
+      source: descriptor.template.content,
+      compilerOptions: { prefixIdentifiers: true },
+    });
+
+    for (const [, name] of code.matchAll(/_resolveDirective\(\s*["']([\w-]+)["']/g)) {
+      assert.ok(
+        registered.has(name),
+        `${path.basename(file)} uses v-${name}, which main.js never registers`,
+      );
+    }
+  }
+});

@@ -2,6 +2,12 @@
 import { computed, ref } from 'vue';
 import { INDICATORS, indicatorCatalog } from '../../shared/indicators/index.js';
 import { VOLUME_PROFILE_PARAMS } from '../../shared/indicators/volumeProfile.js';
+// Zone colours live with the fair-value-gap schema, which defined them first;
+// a session is another zone and uses the same eight.
+import { ZONE_PALETTE } from '../../shared/indicators/fvg.js';
+import {
+  SESSION_PRESETS, SESSION_ZONES, newSession,
+} from '../../shared/indicators/sessions.js';
 import {
   addIndicator, removeIndicator, session, setVolumeProfile, toggleIndicator,
   updateIndicatorParam,
@@ -29,6 +35,32 @@ function swatchFor(ind) {
 function add(spec) {
   addIndicator(spec);
   picking.value = false;
+}
+
+/* ─── Custom sessions ────────────────────────────────────────────────────── */
+
+/* The list is a single parameter value, so every edit writes a whole new array
+ * rather than mutating the one in the store — the same shape any other
+ * parameter change has, and it keeps the watcher honest. */
+function writeSessions(ind, key, list) {
+  updateIndicatorParam(ind.uid, key, list);
+}
+
+function patchSession(ind, key, index, patch) {
+  const list = ind.params[key].map((s, i) => (i === index ? { ...s, ...patch } : s));
+  writeSessions(ind, key, list);
+}
+
+function removeSession(ind, key, index) {
+  writeSessions(ind, key, ind.params[key].filter((_, i) => i !== index));
+}
+
+/* Starting from the preset that was on screen beats starting from nothing:
+ * most custom sets are one of the standard ones with a window moved. */
+function addSession(ind, key) {
+  const current = ind.params[key];
+  const seed = current.length === 0 ? (SESSION_PRESETS[ind.params.preset] ?? []) : [];
+  writeSessions(ind, key, seed.length ? seed.map((s) => ({ ...s })) : [...current, newSession()]);
 }
 
 /** Prices span BTC at 100k and altcoins at 0.00001 — pick decimals to match. */
@@ -75,7 +107,13 @@ function fmtCount(n) {
     </p>
 
     <template v-if="vp.enabled">
-      <label class="field">
+      <label
+        v-hint="{
+          label: 'Range',
+          text: 'Which stretch of history the profile covers. The visible range recomputes as you pan; everything stored profiles the whole symbol, however much of it you have.',
+        }"
+        class="field"
+      >
         <span class="k-mono-label">Range</span>
         <select
           class="input"
@@ -87,7 +125,12 @@ function fmtCount(n) {
         </select>
       </label>
 
-      <label v-for="p in VOLUME_PROFILE_PARAMS" :key="p.key" class="field">
+      <label
+        v-for="p in VOLUME_PROFILE_PARAMS"
+        :key="p.key"
+        v-hint="{ label: p.label, text: p.hint }"
+        class="field"
+      >
         <span class="k-mono-label">{{ p.label }}</span>
         <select
           v-if="p.type === 'select'"
@@ -109,7 +152,13 @@ function fmtCount(n) {
         />
       </label>
 
-      <label class="checkline">
+      <label
+        v-hint="{
+          label: 'POC / VAH / VAL',
+          text: 'Draws the point of control and both value-area edges as lines across the chart, with a label, instead of only colouring the bars.',
+        }"
+        class="checkline"
+      >
         <input
           type="checkbox"
           :checked="vp.showLabels"
@@ -180,7 +229,11 @@ function fmtCount(n) {
 
     <ul v-if="picking" class="catalog">
       <li v-for="spec in catalog" :key="spec.id">
-        <button class="catalog-item" @click="add(spec)">
+        <button
+          v-hint="{ label: spec.name, text: spec.description }"
+          class="catalog-item"
+          @click="add(spec)"
+        >
           <span class="catalog-name">{{ spec.name }}</span>
           <span class="k-mono-meta">{{ spec.description }}</span>
         </button>
@@ -198,7 +251,7 @@ function fmtCount(n) {
         <button
           class="icon-btn"
           :class="{ 'is-active': ind.visible }"
-          :title="ind.visible ? 'Hide' : 'Show'"
+          v-hint="ind.visible ? 'Hide this indicator without removing it' : 'Show this indicator again'"
           @click="toggleIndicator(ind.uid)"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
@@ -207,7 +260,11 @@ function fmtCount(n) {
             <circle v-if="ind.visible" cx="12" cy="12" r="3" />
           </svg>
         </button>
-        <button class="icon-btn" title="Remove" @click="removeIndicator(ind.uid)">
+        <button
+          v-hint="'Take this indicator off the chart'"
+          class="icon-btn"
+          @click="removeIndicator(ind.uid)"
+        >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
             <path d="M6 6l12 12M18 6L6 18" />
           </svg>
@@ -215,16 +272,80 @@ function fmtCount(n) {
       </div>
 
       <div class="indicator-params">
-        <label v-for="p in specFor(ind.id).params" :key="p.key" class="field field--inline">
+        <!-- The hint comes from the same schema the field itself is built from,
+             so a new parameter cannot arrive without its explanation. -->
+        <label
+          v-for="p in specFor(ind.id).params"
+          :key="p.key"
+          v-hint="{ label: p.label, text: p.hint }"
+          class="field"
+          :class="p.type === 'sessions' ? 'field--stacked' : 'field--inline'"
+        >
           <span class="k-mono-label">{{ p.label }}</span>
-          <div v-if="p.type === 'color'" class="swatches">
+          <div v-if="p.type === 'sessions'" class="sessions">
+            <div v-for="(sess, i) in ind.params[p.key]" :key="i" class="session">
+              <input
+                class="input input--sm session-name"
+                :value="sess.name"
+                @change="patchSession(ind, p.key, i, { name: $event.target.value })"
+              />
+              <button
+                v-hint="'Remove this session'"
+                class="icon-btn icon-btn--tiny"
+                @click="removeSession(ind, p.key, i)"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path d="M6 6l12 12M18 6L6 18" />
+                </svg>
+              </button>
+
+              <select
+                class="input input--sm session-zone"
+                :value="sess.zone"
+                @change="patchSession(ind, p.key, i, { zone: $event.target.value })"
+              >
+                <option v-for="z in SESSION_ZONES" :key="z.value" :value="z.value">{{ z.label }}</option>
+              </select>
+
+              <input
+                class="input input--sm session-time"
+                type="time"
+                :value="sess.start"
+                @change="patchSession(ind, p.key, i, { start: $event.target.value })"
+              />
+              <input
+                class="input input--sm session-time"
+                type="time"
+                :value="sess.end"
+                @change="patchSession(ind, p.key, i, { end: $event.target.value })"
+              />
+
+              <div class="swatches session-colors">
+                <button
+                  v-for="o in ZONE_PALETTE"
+                  :key="o.value"
+                  class="pick"
+                  :class="{ 'is-active': o.value === sess.color }"
+                  :style="{ background: `var(--${o.value})` }"
+                  :title="o.label"
+                  @click="patchSession(ind, p.key, i, { color: o.value })"
+                ></button>
+              </div>
+            </div>
+
+            <button class="btn btn--sm btn--default" @click="addSession(ind, p.key)">
+              {{ ind.params[p.key].length ? 'Add session' : 'Start from preset' }}
+            </button>
+          </div>
+
+          <div v-else-if="p.type === 'color'" class="swatches">
             <button
               v-for="o in p.options"
               :key="o.value"
               class="pick"
               :class="{ 'is-active': o.value === ind.params[p.key] }"
               :style="{ background: `var(--${o.value})` }"
-              :title="o.label"
+              v-hint="o.label"
               @click="updateIndicatorParam(ind.uid, p.key, o.value)"
             ></button>
           </div>
@@ -271,6 +392,7 @@ function fmtCount(n) {
 }
 
 .field { display: flex; flex-direction: column; gap: 5px; }
+.field--stacked { flex-direction: column; align-items: stretch; gap: 5px; }
 .field--inline {
   flex-direction: row;
   align-items: center;
@@ -375,5 +497,23 @@ function fmtCount(n) {
   cursor: pointer;
 }
 .pick.is-active { outline: 1.5px solid var(--txt); outline-offset: 1px; }
+
+/* Custom sessions — a stack of small editors rather than a table, because the
+   panel is 268px wide and a table of five columns is unreadable there. */
+.sessions { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.session {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px;
+  padding: 7px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+.session-name { grid-column: 1; width: auto; }
+.session-zone { grid-column: 1 / -1; width: auto; }
+.session-time { width: auto; }
+.session-colors { grid-column: 1 / -1; }
+.icon-btn--tiny { width: 24px; height: 24px; }
+.icon-btn--tiny svg { width: 13px; height: 13px; }
 .indicator-params { display: flex; flex-direction: column; gap: 5px; }
 </style>

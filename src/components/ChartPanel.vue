@@ -4,6 +4,10 @@ import { CandlestickSeries, HistogramSeries, LineSeries, createChart } from 'lig
 import { INDICATORS, computeIndicator } from '../../shared/indicators/index.js';
 import { VolumeProfilePrimitive } from './chart/volumeProfilePrimitive.js';
 import { FvgPrimitive } from './chart/fvgPrimitive.js';
+import {
+  RangeProfilePrimitive, profileWindow, windowKey,
+} from './chart/rangeProfilePrimitive.js';
+import { SessionPrimitive } from './chart/sessionPrimitive.js';
 import { DrawingPrimitive } from './chart/drawings/drawingPrimitive.js';
 import { useDrawings } from './chart/drawings/useDrawings.js';
 import DrawingToolbar from './DrawingToolbar.vue';
@@ -37,6 +41,12 @@ let profileToken = 0;   // guards against a slow response overwriting a newer on
 
 let vpPrimitive = null;
 let fvgPrimitive = null;
+let rangePrimitive = null;
+let sessionPrimitive = null;
+/** windowKey -> profile, so panning or selecting never refetches. */
+const rangeProfiles = new Map();
+let rangeTimer = null;
+let rangeToken = 0;
 let drawPrimitive = null;
 /** uid -> { series: ISeriesApi[], outputs: string[] } */
 const indicatorSeries = new Map();
@@ -131,6 +141,20 @@ async function fetchRange(from, to) {
   });
 }
 
+/* Bars as an indicator sees them.
+ *
+ * The series wants seconds, so `bars` holds seconds. Anything that reads a
+ * calendar off a bar — sessions, an anchored VWAP — needs milliseconds, and
+ * silently gets 1970 otherwise: the numbers still look like timestamps, the
+ * output still looks like an indicator, and every session lands on the wrong
+ * day. Converted once per render rather than per indicator.
+ */
+let indicatorBars = [];
+
+function buildIndicatorBars() {
+  indicatorBars = bars.map((b) => ({ ...b, time: b.time * 1000 }));
+}
+
 function render() {
   const p = palette(); // once per render, not once per bar
   candles.value.setData(bars.map(({ volume: _v, ...b }) => b));
@@ -139,6 +163,7 @@ function render() {
     value: b.volume,
     color: b.close >= b.open ? p.volUp : p.volDown,
   })));
+  buildIndicatorBars();
   syncIndicators();
 }
 
@@ -167,15 +192,30 @@ function syncIndicators() {
    * library has none. Every one of them feeds the same primitive, so a chart
    * with three FVG settings on it still repaints in one pass. */
   const zoneGroups = [];
+  const sessionGroups = [];
 
   for (const ind of active) {
     const spec = INDICATORS[ind.id];
     if (!spec) continue;
 
+    if (spec.kind === 'sessions') {
+      if (!ind.visible || bars.length === 0) continue;
+      try {
+        const { sessions } = computeIndicator(ind.id, indicatorBars, ind.params);
+        sessionGroups.push({
+          sessions,
+          options: { extent: ind.params.extent, labels: ind.params.labels },
+        });
+      } catch (err) {
+        setError(err);
+      }
+      continue;
+    }
+
     if (spec.kind === 'zones') {
       if (!ind.visible || bars.length === 0) continue;
       try {
-        const { zones } = computeIndicator(ind.id, bars, ind.params);
+        const { zones } = computeIndicator(ind.id, indicatorBars, ind.params);
         zoneGroups.push({
           zones,
           // The midpoint is only meaningful when it is the rule that fills a gap.
@@ -214,7 +254,7 @@ function syncIndicators() {
 
     let result;
     try {
-      result = computeIndicator(ind.id, bars, ind.params);
+      result = computeIndicator(ind.id, indicatorBars, ind.params);
     } catch (err) {
       setError(err);
       continue;
@@ -236,6 +276,7 @@ function syncIndicators() {
   }
 
   fvgPrimitive?.setGroups(zoneGroups);
+  sessionPrimitive?.setGroups(sessionGroups);
 }
 
 /* ─── Volume profile ────────────────────────────────────────────────────── */
@@ -304,10 +345,79 @@ async function updateProfile() {
   }
 }
 
+/* ─── Range volume profiles ─────────────────────────────────────────────── */
+
+/* The bins, value area and spread are the ones set in the panel, whether or not
+ * the panel profile itself is switched on. Two profiles of the same market
+ * disagreeing about how volume is distributed would be worse than one setting
+ * living in a slightly odd place. */
+function rangeOptions() {
+  const cfg = session.volumeProfile;
+  return { bins: cfg.bins, valueArea: cfg.valueArea, distribution: cfg.distribution };
+}
+
+function scheduleRangeProfiles() {
+  clearTimeout(rangeTimer);
+  rangeTimer = setTimeout(updateRangeProfiles, PROFILE_DEBOUNCE_MS);
+}
+
+/** Pushes whatever is already computed; called after every fetch and on load. */
+function publishRangeProfiles(spans, options) {
+  rangePrimitive?.setEntries(
+    spans
+      .map((drawing) => ({ drawing, profile: rangeProfiles.get(windowKey(drawing, options)) }))
+      .filter((entry) => entry.profile),
+  );
+}
+
+async function updateRangeProfiles() {
+  if (!rangePrimitive) return;
+  const spans = draw.drawings.value.filter((d) => d.type === 'rangeprofile');
+
+  if (!props.symbol || spans.length === 0) {
+    rangeProfiles.clear();
+    rangePrimitive.setEntries([]);
+    return;
+  }
+
+  const options = rangeOptions();
+  const wanted = new Set(spans.map((d) => windowKey(d, options)));
+  /* Dragging a span produces a new key on every frame, so without this the map
+   * would grow for as long as the mouse is down. */
+  for (const key of rangeProfiles.keys()) {
+    if (!wanted.has(key)) rangeProfiles.delete(key);
+  }
+
+  publishRangeProfiles(spans, options);
+
+  const token = ++rangeToken;
+  const missing = spans.filter((d) => !rangeProfiles.has(windowKey(d, options)));
+
+  await Promise.all(missing.map(async (drawing) => {
+    const { from, to } = profileWindow(drawing);
+    // A span dragged out on one bar has no width yet; the data process would
+    // reject it, and there is nothing to profile in it anyway.
+    if (!(to > from)) return;
+    try {
+      const profile = await window.midori.data.volumeProfile({
+        symbol: props.symbol, from, to, ...options,
+      });
+      rangeProfiles.set(windowKey(drawing, options), profile);
+    } catch (err) {
+      setError(err);
+    }
+  }));
+
+  // A newer pass has already taken over; its own publish is the current one.
+  if (token !== rangeToken) return;
+  publishRangeProfiles(spans, options);
+}
+
 /* ─── Loading ───────────────────────────────────────────────────────────── */
 
 async function loadInitial() {
   bars = [];
+  indicatorBars = [];
   earliestMs = null;
   if (!props.symbol) {
     status.value = '';
@@ -454,6 +564,8 @@ function syncDrawings() {
     draft: draw.draft.value,
     selectedId: draw.selectedId.value,
   });
+  // A span that moved needs a new profile; everything else is a no-op by key.
+  scheduleRangeProfiles();
 }
 
 function onToolbarTool(tool) {
@@ -503,6 +615,13 @@ onMounted(() => {
   fvgPrimitive = new FvgPrimitive();
   candles.value.attachPrimitive(fvgPrimitive);
 
+  rangePrimitive = new RangeProfilePrimitive();
+  rangePrimitive.project = draw.project;
+  candles.value.attachPrimitive(rangePrimitive);
+
+  sessionPrimitive = new SessionPrimitive();
+  candles.value.attachPrimitive(sessionPrimitive);
+
   vpPrimitive = new VolumeProfilePrimitive({
     width: session.volumeProfile.width,
     showLabels: session.volumeProfile.showLabels,
@@ -532,6 +651,7 @@ onMounted(() => {
     applyTheme();
     render();
     drawPrimitive?.repaint(); // drawings read their colours from the tokens too
+    rangePrimitive?.repaint();
   });
   themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
 
@@ -540,6 +660,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   clearTimeout(profileTimer);
+  clearTimeout(rangeTimer);
   themeObserver?.disconnect();
   host.value?.removeEventListener('mousemove', onHostMove);
   window.removeEventListener('keydown', onKeyDown);
@@ -553,6 +674,7 @@ watch(() => [props.symbol, props.timeframe], loadInitial);
 /* Drawings belong to the symbol, so they reload on a symbol change but survive
  * a timeframe switch — a level drawn on the 15m stays put on the 4h. */
 watch(() => props.symbol, async () => {
+  rangeProfiles.clear();
   await draw.load();
   syncDrawings();
 }, { immediate: true });
@@ -564,6 +686,14 @@ watch(
     return [v.enabled, v.bins, v.valueArea, v.distribution, v.range];
   },
   updateProfile,
+);
+// The same three settings decide how a range profile is binned.
+watch(
+  () => {
+    const v = session.volumeProfile;
+    return [v.bins, v.valueArea, v.distribution];
+  },
+  scheduleRangeProfiles,
 );
 // Display-only options repaint the existing profile instead of refetching it.
 watch(

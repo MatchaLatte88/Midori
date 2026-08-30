@@ -59,6 +59,12 @@ export const TOOLS = [
     icon: 'measure',
   },
   {
+    id: 'rangeprofile',
+    name: 'Range volume profile',
+    hint: 'Drag across a stretch of chart to profile the volume traded in it',
+    icon: 'rangeprofile',
+  },
+  {
     id: 'position',
     name: 'Position',
     hint: 'Drag from the entry to the stop — down for a long, up for a short',

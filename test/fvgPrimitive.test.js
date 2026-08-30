@@ -40,20 +40,18 @@ test('a filled box ends half a bar past the bar that filled it', () => {
   assert.equal(right, 100);
 });
 
-test('boxWidth counts bars from the bar that confirms the zone', () => {
-  // Confirmed at bar 5 (centre 55, right edge 60), plus four bars.
+test('boxWidth counts bars from the left edge of the box', () => {
   const { left, right } = boxExtent(zone(3), view(4));
   assert.equal(left, 30);
-  assert.equal(right, 100);
+  assert.equal(right, 70);
+  assert.equal(right - left, 4 * BAR, 'four bars wide, in pixels');
 });
 
 test('whichever ends the box first wins', () => {
-  // Filled at bar 7 (right = 80) with a cap reaching 100.
-  assert.equal(boxExtent(zone(3, 5, 7), view(4)).right, 80);
+  // Filled at bar 7 (right = 80), cap reaches only 70.
+  assert.equal(boxExtent(zone(3, 5, 7), view(4)).right, 70);
   // Filled at bar 7 (right = 80) with a far looser cap.
   assert.equal(boxExtent(zone(3, 5, 7), view(20)).right, 80);
-  // Filled late, capped early.
-  assert.equal(boxExtent(zone(3, 5, 40), view(4)).right, 100);
 });
 
 test('a capped box far to the left stays far to the left', () => {
@@ -61,7 +59,7 @@ test('a capped box far to the left stays far to the left', () => {
   // with it rather than collapsing onto the left edge of the pane.
   const { left, right } = boxExtent(zone(2000), view(4));
   assert.equal(left, 20000);
-  assert.equal(right, 20070);
+  assert.equal(right, 20040);
 
   const past = boxExtent(zone(-500), view(4));
   assert.ok(past.right < 0, 'a box left of the pane keeps a negative right edge');
@@ -72,19 +70,18 @@ test('a zero cap means no cap, not a zero-width box', () => {
   assert.equal(boxExtent(zone(3, 5, 9), view(0)).right, 100);
 });
 
-/* The case that forced the cap to be measured from the confirming bar: an
- * inverted gap is drawn from a gap that can predate its own break by hundreds
- * of bars. Counting the cap from the left edge ended the box long before the
- * level it marks ever applied — the box sat entirely in the past. */
-test('a capped inverted zone still reaches past the bar that confirmed it', () => {
+/* An inverted zone is drawn from the gap it came from, and the cap counts from
+ * there — not from the break, which can be hundreds of bars later. A capped box
+ * therefore ends before the bar that broke the gap, and that is the intent: the
+ * box marks the price level, and the level sits where the gap was. */
+test('a capped inverted zone is measured from its gap, not from the break', () => {
   const gapAt3BrokenAt200 = zone(3, 200);
-  const { left, right } = boxExtent(gapAt3BrokenAt200, view(4));
+  const { left, right } = boxExtent(gapAt3BrokenAt200, view(3));
 
   assert.equal(left, 30, 'drawn from the gap it came from');
-  assert.ok(right > indexToX(200), 'the box must cover the bar that broke the gap');
-  assert.equal(right, 2050); // bar 200 at 2005, plus half a bar, plus four bars
+  assert.equal(right, 60, 'three bars wide from there');
+  assert.ok(right < indexToX(200), 'it stops long before the break, by design');
 
-  // Counting from the left edge would have ended it at x = 70, 1935 pixels
-  // short of the level ever applying.
-  assert.ok(right > left + 4 * BAR);
+  // Uncapped, the same zone runs to the right edge as before.
+  assert.equal(boxExtent(gapAt3BrokenAt200, view(0)).right, PANE);
 });

@@ -128,6 +128,21 @@ class DrawingRenderer {
         }
         break;
 
+      /* Only the span is drawn here. The histogram inside it is a separate
+       * primitive underneath the candles — chrome the user placed belongs on
+       * top, a distribution belongs behind. */
+      case 'rangeprofile':
+        if (b) {
+          const x = Math.min(a.x, b.x);
+          const w = Math.abs(b.x - a.x);
+          fillRectAlpha(ctx, color, 0.05, x, 0, w, size.height);
+          ctx.setLineDash([4, 3]);
+          this._line(ctx, x, 0, x, size.height);
+          this._line(ctx, x + w, 0, x + w, size.height);
+          ctx.setLineDash([]);
+        }
+        break;
+
       case 'fib':
         if (b) this._fib(ctx, size, drawing, a, b, color);
         break;
