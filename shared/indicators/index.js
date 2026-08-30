@@ -39,6 +39,7 @@ import {
   FVG_PARAMS, IFVG_PARAMS, detectFairValueGaps, detectInvertedFairValueGaps,
 } from './fvg.js';
 import { SESSION_PARAMS, checkSession, computeSessions } from './sessions.js';
+import { STOPHUNT_PARAMS, detectStopHunts } from './stophunt.js';
 
 /** Reusable schema fragment — the UI generates its input fields from this. */
 const periodParam = (def, label = 'Period', hint) => ({
@@ -355,6 +356,17 @@ export const INDICATORS = {
     outputs: [{ key: 'sessions', label: 'Sessions', style: 'zone' }],
     compute: computeSessions,
   },
+
+  stophunt: {
+    id: 'stophunt',
+    name: 'Stop Hunts',
+    description: 'Levels price ran through to fill stops, then closed back inside.',
+    pane: 'price',
+    kind: 'hunts',
+    params: STOPHUNT_PARAMS,
+    outputs: [{ key: 'hunts', label: 'Hunts', style: 'zone' }],
+    compute: detectStopHunts,
+  },
 };
 
 /** UTC period identifier used to reset anchored indicators. */
@@ -395,6 +407,19 @@ export function computeIndicator(id, bars, params = {}) {
       // Validated here rather than in the detector, so a bad entry is refused
       // at the edge with a message naming which one it was.
       given.forEach((session, i) => checkSession(session, `${id}.${p.key}[${i}]`));
+      merged[p.key] = given;
+    } else if (p.type === 'multi') {
+      /* A list of choices rather than one. Validated here for the same reason
+       * a select is: an unknown value would otherwise reach a detector that
+       * silently ignores it, and the setting would look applied. */
+      if (!Array.isArray(given)) {
+        throw new Error(`${id}.${p.key}: expected a list, got ${typeof given}`);
+      }
+      for (const v of given) {
+        if (!p.options.some((o) => o.value === v)) {
+          throw new Error(`${id}.${p.key}: "${v}" is not one of ${p.options.map((o) => o.value).join(', ')}`);
+        }
+      }
       merged[p.key] = given;
     } else if (p.type === 'select' || p.type === 'color') {
       if (!p.options.some((o) => o.value === given)) {

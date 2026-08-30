@@ -192,7 +192,7 @@ Serien-Indikatoren lassen `kind` weg — das ist der Normalfall. Der Chart legt 
 Serie an, sondern schiebt sie in ein Pane-Primitive.
 
 Vorhanden: SMA, EMA, Bollinger Bands, RSI, ATR, VWAP (täglich/wöchentlich verankert),
-Fair Value Gaps, Inverted Fair Value Gaps und Handelssessions.
+Fair Value Gaps, Inverted Fair Value Gaps, Handelssessions und Stop Hunts.
 
 ### Bar-Zeiten sind Millisekunden
 
@@ -367,9 +367,59 @@ wieder genau die Divergenz, gegen die `shared/indicators/` existiert.
 `originIndex` führt mit, aus welcher Lücke die Zone stammt, damit eine Strategie eine frische
 Inversion von einer unterscheiden kann, die zweihundert Bars gebraucht hat.
 
+### Stop Hunts
+
+Ein Stop Hunt ist der Lauf durch ein Niveau, an dem Stops liegen, und die Rückkehr auf die
+Ausgangsseite. Drei Dinge, in dieser Reihenfolge: ein **Niveau**, ein **Durchstoß**, ein
+**Reclaim**. Alle drei sind nötig — ein Durchstoß ohne Reclaim ist kein Hunt, sondern ein
+Bruch. Dieselben zwei Bars gehören zu beidem; erst was danach passiert, entscheidet welches.
+
+**Drei Quellen für Liquidität**, einzeln zuschaltbar (`sources`):
+
+- `swing` — Fraktale: `strength` Bars links und rechts sind niedriger. Der universelle Fall.
+- `equal` — zwei oder mehr Swings auf demselben Preis innerhalb einer Toleranz. Das ist der
+  eigentliche Stop-Cluster. Das Niveau ist das **Extrem** der Gruppe, nicht ihr Mittel: Die
+  Stops liegen jenseits des äußersten, ein Lauf bis zum Mittelwert hätte nichts gefüllt.
+- `session` — Hoch und Tief **abgeschlossener** Sessions, gelesen über `computeSessions`.
+  Die laufende Session liefert kein Niveau; ihre Extrema bewegen sich noch.
+
+**Look-Ahead ist hier die eigentliche Falle.** Ein Fraktal-Hoch auf Bar i ist erst dann ein
+Fraktal, wenn `strength` Bars rechts davon geschlossen haben — auf Bar i konnte es niemand
+wissen. Jedes Niveau trägt deshalb `formedIndex` (wo es liegt, zum Zeichnen) und
+`knownIndex` (ab wann es handelbar ist), dieselbe Trennung wie `startIndex`/`index` bei den
+Lücken. Ein Sweep trägt drei Indizes, weil er einen Moment mehr hat als eine Zone:
+`levelIndex`, `sweepIndex` und `index` — letzterer ist die Bar, die den Reclaim bestätigt,
+und der einzige, den eine Strategie lesen darf.
+
+**Das Bestätigungsfenster.** `confirmBars` zählt ab der durchstoßenden Bar einschließlich.
+`1` ist die strenge Lesart: Docht hindurch, Körper zurück, eine Kerze. Höhere Werte fangen
+langsamere Hunts und bestätigen entsprechend später — `sweepIndex` und `index` fallen dann
+wirklich auseinander. Läuft das Fenster ohne Reclaim ab, gilt das Niveau als echt gebrochen
+und fällt weg. Ein Niveau kann deshalb nur **einmal** gejagt werden: Die Stops dahinter sind
+beim ersten Mal gefüllt worden.
+
+**Ein Hunt hat eine kurze Lebensdauer.** `holdBars` sagt, wie lange nach dem Reclaim der
+Preis das Niveau noch respektieren muss. Ohne Fenster gewinnt die falsche Lesart und
+verschlingt fast alles: Auf einem Monat BTC-15m überleben von 286 Hunts unbegrenzt gerade
+**12**, bei zehn Bars **117**. Der Abstand ist kein Markteffekt, sondern die Definition, die
+den Indikator auffrisst — derselbe Fehler wie bei der IFVG, wo die Lückenregel 690 von 718
+Inversionen wegwarf. Von den Hunts, die scheitern, scheitert der Median nach sechs Bars und
+ein Viertel schon in der ersten; ein Fenster von zehn fängt die Zurückweisungen, die mit
+diesem Niveau zu tun hatten, und wenige, die es nicht hatten.
+
+**Die Richtung ist nach dem Trade benannt, nicht nach dem Docht.** Ein Hunt durch ein *Hoch*
+nimmt Buy-Side-Liquidität und dreht nach unten, ist also `bear` — genau umgekehrt zu dem, was
+der Docht getan hat, und das ist der Punkt des Musters.
+
+Gezeichnet wird ein Hunt als **drei Marken**, weil er drei Momente hat: die gestrichelte
+Linie vom Entstehen des Niveaus bis zum Lauf (ihre Länge ist, wie lange die Liquidität
+sichtbar dort lag), die gefüllte Raid-Box von Niveau bis Docht-Extrem über der
+durchstoßenden Bar, und das blasse Fenster bis zur bestätigenden Bar. Ist das Fenster leer,
+hat dieselbe Bar zurückgeschlossen — und genau das soll man sehen.
+
 ### Zonenfarben
 
-Beide Zonen-Indikatoren tragen zwei Farbparameter (bullisch / bärisch). Gespeichert werden
+Die Zonen-Indikatoren und die Stop Hunts tragen je zwei Farbparameter (bullisch / bärisch). Gespeichert werden
 **Token-Namen, kein Hex**: dieselbe Wahl muss in Hell und Dunkel funktionieren, und das tut
 nur ein Token. Der Renderer setzt die Deckkraft ausschließlich über `globalAlpha` und backt
 sie nie zusätzlich in die Farbe — beides zusammen multipliziert sich, und eine Zone, die mit

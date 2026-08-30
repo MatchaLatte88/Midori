@@ -91,6 +91,13 @@ Zwei Dinge sind dabei bewusst so gebaut:
 - **Sessions** (Asia, London, New York — als Futures- oder Forex-Satz, oder selbst
   definiert) kennen die Zeitzone ihres Marktes, nicht eine feste UTC-Stunde. Wenn irgendwo
   die Uhren umgestellt werden, wandert die Session mit.
+- **Stop Hunts** markieren Niveaus, durch die der Preis gelaufen ist, um Stops zu füllen,
+  und hinter die er dann zurückgekehrt ist. Als Liquidität zählen wahlweise Swing-Punkte,
+  gleiche Hochs/Tiefs (die eigentlichen Cluster) und die Extrema abgeschlossener Sessions —
+  einzeln zuschaltbar. Du stellst ein, wie viele Bars der Preis für die Rückkehr hat und wie
+  lange sie danach halten muss; ein Durchstoß ohne Rückkehr ist kein Hunt, sondern ein
+  Bruch, und wird nicht gezeigt. Auch hier ist getrennt, wo das Niveau liegt und ab welcher
+  Bar es überhaupt bekannt war.
 - Das **Volume Profile rechnet immer auf 1m-Bars**, egal welchen Timeframe der Chart zeigt.
   Wer stattdessen die angezeigten Bars profiliert, bekommt auf dem 4h-Chart einen anderen
   POC als auf dem 5m-Chart.
@@ -190,6 +197,7 @@ strategies/       Beispielstrategien (sma-cross.js)
 src/
   components/       ChartPanel, DataManager, IndicatorPanel, DrawingToolbar
   components/chart/ volumeProfilePrimitive.js — Canvas-Plugin für das Profil
+  components/chart/ fvgPrimitive.js, sessionPrimitive.js, huntPrimitive.js — Zonen und Marken
   components/chart/drawings/  Geometrie, Modell, Rendering und Maussteuerung
   stores/session.js Symbol, Timeframe, Bibliothek, aktive Indikatoren
   styles/           Katsumii „Living Data" — tokens.css, base.css, fonts.css

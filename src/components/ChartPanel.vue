@@ -8,6 +8,7 @@ import {
   RangeProfilePrimitive, profileWindow, windowKey,
 } from './chart/rangeProfilePrimitive.js';
 import { SessionPrimitive } from './chart/sessionPrimitive.js';
+import { HuntPrimitive } from './chart/huntPrimitive.js';
 import { DrawingPrimitive } from './chart/drawings/drawingPrimitive.js';
 import { useDrawings } from './chart/drawings/useDrawings.js';
 import DrawingToolbar from './DrawingToolbar.vue';
@@ -43,6 +44,7 @@ let vpPrimitive = null;
 let fvgPrimitive = null;
 let rangePrimitive = null;
 let sessionPrimitive = null;
+let huntPrimitive = null;
 /** windowKey -> profile, so panning or selecting never refetches. */
 const rangeProfiles = new Map();
 let rangeTimer = null;
@@ -193,6 +195,7 @@ function syncIndicators() {
    * with three FVG settings on it still repaints in one pass. */
   const zoneGroups = [];
   const sessionGroups = [];
+  const huntGroups = [];
 
   for (const ind of active) {
     const spec = INDICATORS[ind.id];
@@ -205,6 +208,22 @@ function syncIndicators() {
         sessionGroups.push({
           sessions,
           options: { extent: ind.params.extent, labels: ind.params.labels },
+        });
+      } catch (err) {
+        setError(err);
+      }
+      continue;
+    }
+
+    if (spec.kind === 'hunts') {
+      if (!ind.visible || bars.length === 0) continue;
+      try {
+        const { hunts } = computeIndicator(ind.id, indicatorBars, ind.params);
+        huntGroups.push({
+          hunts,
+          // Drawing-only, so these never reached compute() — see fvg.js.
+          bullColor: ind.params.bullColor,
+          bearColor: ind.params.bearColor,
         });
       } catch (err) {
         setError(err);
@@ -277,6 +296,7 @@ function syncIndicators() {
 
   fvgPrimitive?.setGroups(zoneGroups);
   sessionPrimitive?.setGroups(sessionGroups);
+  huntPrimitive?.setGroups(huntGroups);
 }
 
 /* ─── Volume profile ────────────────────────────────────────────────────── */
@@ -621,6 +641,9 @@ onMounted(() => {
 
   sessionPrimitive = new SessionPrimitive();
   candles.value.attachPrimitive(sessionPrimitive);
+
+  huntPrimitive = new HuntPrimitive();
+  candles.value.attachPrimitive(huntPrimitive);
 
   vpPrimitive = new VolumeProfilePrimitive({
     width: session.volumeProfile.width,

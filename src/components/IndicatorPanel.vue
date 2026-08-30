@@ -24,10 +24,12 @@ function specFor(id) {
 }
 
 /* A zone indicator carries its own pair of colours, so its swatch shows both;
- * everything else takes the colour slot it was given when it was added. */
+ * everything else takes the colour slot it was given when it was added. Stop
+ * hunts are drawn differently but named the same way — a bull and a bear
+ * colour — so they read off the same pair. */
 function swatchFor(ind) {
   const spec = INDICATORS[ind.id];
-  if (spec.kind !== 'zones') return `var(--ind-${ind.colorIndex})`;
+  if (spec.kind !== 'zones' && spec.kind !== 'hunts') return `var(--ind-${ind.colorIndex})`;
   return 'linear-gradient(135deg, '
     + `var(--${ind.params.bullColor}) 0 50%, var(--${ind.params.bearColor}) 50%)`;
 }
@@ -35,6 +37,19 @@ function swatchFor(ind) {
 function add(spec) {
   addIndicator(spec);
   picking.value = false;
+}
+
+/* Adds or removes one value of a multi-select parameter, writing a whole new
+ * array for the reason writeSessions gives below: an edit that mutates the
+ * array in the store is an edit the watcher never sees. Order follows the
+ * schema rather than the clicks, so the same three choices always serialise
+ * the same way. */
+function toggleMulti(ind, p, value) {
+  const current = ind.params[p.key] ?? [];
+  const next = current.includes(value)
+    ? current.filter((v) => v !== value)
+    : p.options.map((o) => o.value).filter((v) => v === value || current.includes(v));
+  updateIndicatorParam(ind.uid, p.key, next);
 }
 
 /* ─── Custom sessions ────────────────────────────────────────────────────── */
@@ -279,7 +294,7 @@ function fmtCount(n) {
           :key="p.key"
           v-hint="{ label: p.label, text: p.hint }"
           class="field"
-          :class="p.type === 'sessions' ? 'field--stacked' : 'field--inline'"
+          :class="['sessions', 'multi'].includes(p.type) ? 'field--stacked' : 'field--inline'"
         >
           <span class="k-mono-label">{{ p.label }}</span>
           <div v-if="p.type === 'sessions'" class="sessions">
@@ -336,6 +351,16 @@ function fmtCount(n) {
             <button class="btn btn--sm btn--default" @click="addSession(ind, p.key)">
               {{ ind.params[p.key].length ? 'Add session' : 'Start from preset' }}
             </button>
+          </div>
+
+          <div v-else-if="p.type === 'multi'" class="toggles">
+            <button
+              v-for="o in p.options"
+              :key="o.value"
+              class="toggle"
+              :class="{ 'is-active': (ind.params[p.key] ?? []).includes(o.value) }"
+              @click="toggleMulti(ind, p, o.value)"
+            >{{ o.label }}</button>
           </div>
 
           <div v-else-if="p.type === 'color'" class="swatches">
@@ -497,6 +522,31 @@ function fmtCount(n) {
   cursor: pointer;
 }
 .pick.is-active { outline: 1.5px solid var(--txt); outline-offset: 1px; }
+
+/* A row of on/off choices. Equal widths rather than content widths, so the row
+   keeps its shape when the labels change and stays inside the 268px panel. */
+.toggles { display: flex; gap: 3px; width: 100%; }
+.toggle {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 2px;
+  font-size: 10.5px;
+  letter-spacing: 0.01em;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--sec);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.toggle:hover { border-color: var(--brd); color: var(--txt); }
+.toggle.is-active {
+  border-color: var(--accent-brd);
+  background: var(--accent-bg);
+  color: var(--txt);
+}
 
 /* Custom sessions — a stack of small editors rather than a table, because the
    panel is 268px wide and a table of five columns is unreadable there. */
