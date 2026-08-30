@@ -173,7 +173,162 @@ Look-Ahead hier nicht einschleichen kann: Die Engine übergibt einer Strategie d
 Jeder Indikator exportiert ein deklaratives `params`-Schema; das Panel baut daraus seine
 Eingabefelder. Neuer Indikator = ein Eintrag in `INDICATORS`, keine UI-Änderung.
 
-Vorhanden: SMA, EMA, Bollinger Bands, RSI, ATR, VWAP (täglich/wöchentlich verankert).
+Es gibt eine zweite Ausgabeform. Manche Indikatoren beschreiben keine Zahl je Bar, sondern
+einen *Bereich* des Charts: ein Preisband, das an einer Bar beginnt und endet, wenn der Preis
+zurückkommt. Die deklarieren `kind: 'zones'` und liefern
+
+```
+compute(bars, params) -> { zones: Array<{ top, bottom, startIndex, index, … }> }
+```
+
+Serien-Indikatoren lassen `kind` weg — das ist der Normalfall. Der Chart legt für Zonen keine
+Serie an, sondern schiebt sie in ein Pane-Primitive.
+
+Vorhanden: SMA, EMA, Bollinger Bands, RSI, ATR, VWAP (täglich/wöchentlich verankert),
+Fair Value Gaps und Inverted Fair Value Gaps.
+
+### Fair Value Gaps
+
+Eine FVG (auch „Imbalance") ist ein Preisbereich, durch den der Markt so schnell gelaufen ist,
+dass dort keine beidseitige Auktion stattgefunden hat. Sie wird an drei aufeinanderfolgenden
+Bars abgelesen:
+
+```
+bullish   low(i)  > high(i-2)    Lücke = [high(i-2), low(i)]
+bearish   high(i) < low(i-2)     Lücke = [high(i),  low(i-2)]
+```
+
+**Zwei Indizes, mit Absicht.** Eine Zone hat eine *Form* und einen *Zeitpunkt, ab dem sie
+bekannt ist* — und das sind nicht dieselben Bars. `startIndex` (= i-2) ist der Beginn der
+Lücke und damit die Zeichenkoordinate; `index` (= i) ist die Bar, die sie bestätigt. Vor
+Bar i konnte niemand wissen, dass die Lücke entsteht. Wer beide Felder zu einem
+zusammenzieht und der Strategie dieselbe Zahl gibt, handelt ein Niveau zwei Bars bevor es
+gebildet wurde — genau die Sorte Look-Ahead aus Abschnitt 4, nur eine Ebene höher.
+
+**Mitigation** ist Parameter, keine eingebaute Regel: Trader sind sich echt uneinig, wie weit
+der Preis zurückkommen muss. `touch` (nahe Kante), `ce` (Mittellinie, *consequent
+encroachment*), `full` (ganz durchlaufen), `break` (jenseits **schließen**). Geprüft wird ausschließlich auf Bars **nach** der
+bestätigenden Bar — die Bar, die eine Lücke erzeugt, kann sie nicht füllen, wie weit ihr
+Docht auch reicht. Unter `touch` wäre genau das sonst der Normalfall, denn die nahe Kante
+*ist* ihr eigenes Low.
+
+**Was angezeigt wird**, ist von **wie breit** getrennt. `minSize` und `lookback` (nur Lücken
+aus den letzten N Bars) verengen, *welche* Zonen überhaupt gemeldet werden — beides ist auch
+für eine Strategie sinnvoll und steht deshalb in `fvg.js`. `boxWidth` nicht: wie weit der
+Chart ein Rechteck nach rechts malt, sagt nichts über den Markt. Der Parameter wird über das
+gemeinsame Schema validiert und dann nur vom Renderer gelesen — dasselbe Muster wie die
+Breite des Volume Profile. Bei beiden Zahlen heißt 0 „kein Limit", nicht „nichts".
+
+Die Box endet, was zuerst kommt: die Füllung oder das Breitenlimit. Ohne beides läuft sie bis
+zum rechten Rand — eine offene Lücke am letzten Bar abzuschneiden läse sich als „hier war
+Schluss". Das Breitenlimit zählt ab der linken Kante der Box, `4` ergibt also eine vier Bars
+breite Box. Der Lookback zählt vom neuesten Bar rückwärts, nicht ab einem Datum, damit das
+Fenster dasselbe bedeutet, nachdem ältere Bars dahinter nachgeladen wurden.
+
+Gezeichnet wird als Pane-Primitive auf `zOrder: bottom`, wie das Volume Profile: eine Zone
+ist Kontext, nie etwas, das über den Kerzen liegt. Waagerecht wird über logische Indizes
+positioniert statt über Zeitstempel — die Zonen stammen aus genau dem Bar-Array, das der
+Chart zeigt, also *sind* ihre Indizes die Koordinaten. Das übersteht auch das Nachladen
+älterer Bars, bei dem sich alle Indizes um denselben Betrag verschieben.
+
+Aber nur **ganze** Indizes. `logicalToCoordinate()` prüft intern `!isInteger(index)` und gibt
+dann **0** zurück — keinen `null`, sondern eine gültige Koordinate. Wer nach `index - 0.5`
+fragt, klebt jede Box lautlos an den linken Chartrand, und nichts wirft einen Fehler. Halbe
+Bars werden deshalb in Pixeln gerechnet, nachdem der ganze Index umgerechnet wurde; die
+Pixelbreite einer Bar kommt aus der Differenz zweier ganzer Indizes, nicht aus der
+`barSpacing`-Option, die einem Zoom nicht folgt. Die gesamte Arithmetik steht in
+`boxExtent()` und ist in `test/fvgPrimitive.test.js` abgedeckt — ohne Chart prüfbar, weil
+genau dieser Fehler auf dem Bildschirm wie eine Designentscheidung aussieht.
+
+Farblich gilt dasselbe Richtungsvokabular wie bei Kerzen und Buy/Sell-Split: hell ist oben,
+blau ist unten. Kein zweites Grün (Akzent) und kein Rot — siehe Abschnitt 10.
+
+Die Mittellinie wird nur gezeichnet, wenn CE auch die geltende Mitigationsregel ist. Sonst
+stünde eine Linie im Chart, die unter den anderen beiden Einstellungen nichts bedeutet.
+
+### Inverted Fair Value Gaps
+
+Eine IFVG ist das, was übrig bleibt, wenn der Markt eine Lücke *nicht* respektiert. Eine
+bullische FVG, unter die der Preis schließt, hat als Unterstützung versagt; dieselben Preise
+werden danach als Widerstand gelesen, und die Zone dreht ihre Richtung um.
+
+Beide Detektoren teilen sich deshalb **eine** Definition einer Lücke (`findGaps`). Eine zweite,
+die auseinanderdriftet, hätte Chart und Engine für denselben Markt auf unterschiedliche
+Niveaus gesetzt — genau der Fehler, gegen den `shared/indicators/` überhaupt existiert. Ein
+Test hält das fest: jede Inversion muss auf eine Lücke zurückführbar sein, die auch der
+FVG-Detektor gefunden hat, mit identischen Preisen und umgekehrter Richtung.
+
+**Was zählt als Bruch.** Voreinstellung ist ein *Close* jenseits der Lücke, nicht ein Docht:
+ein Docht hindurch ist ein gescheiterter Vorstoß, ein Körper hindurch ist Akzeptanz — zwei
+verschiedene Ereignisse. `wick` gibt es für alle, die den Vorstoß handeln. Auf einem Monat
+BTC-15m liefert `wick` weniger *offene* Inversionen als `close`, nicht mehr: die Zonen
+entstehen früher und werden entsprechend früher wieder mitigiert.
+
+Die IFVG behält die Trennung von `startIndex` und `index` und braucht sie stärker als die
+FVG: Gezeichnet wird ab der **ursprünglichen Lücke** — dort liegt das Niveau, und dort sucht
+es auch, wer es sucht — bestätigt aber erst auf der brechenden Bar. Auf einem Monat BTC-15m
+liegen dazwischen im Median 14 Bars, im Extremfall 890. Das Bild reicht zurück; was eine
+Strategie handeln darf, nicht.
+
+Genau dieser Abstand zwingt die Box-Breite dazu, **ab der bestätigenden Bar** zu zählen und
+nicht ab der linken Kante. Bei einer FVG liegen beide zwei Bars auseinander und es fällt
+nicht auf; bei einer IFVG hätte `Box width = 4` die Box 886 Bars vor dem Bruch enden lassen —
+das Rechteck stünde vollständig in der Vergangenheit, bevor das Niveau je galt. Festgehalten
+in `test/fvgPrimitive.test.js`.
+
+**Eine Inversion stirbt nicht am Rücktest.** Die ersten drei Mitigationsregeln beenden eine
+Zone, sobald der Preis in sie zurückkehrt. Für eine Lücke ist das genau richtig — die
+Ineffizienz ist ausgehandelt. Für eine Inversion ist es verkehrt herum: Die Zone *ist* ein
+Niveau, zu dem der Preis zurückkommen und an dem er reagieren soll. Der Rücktest ist der
+Grund, sie zu zeichnen, nicht ihr Ende.
+
+Gemessen auf einem Monat BTC-15m: Die Lücken-Regel auf Inversionen angewandt warf **690 von
+718** weg, 212 davon auf der unmittelbar folgenden Bar, die Hälfte binnen drei Bars. Deshalb
+ist `break` die Voreinstellung für die IFVG — die Zone endet erst, wenn eine Bar jenseits von
+ihr *schließt* — und `full` bleibt die Voreinstellung für die einfache Lücke. `break` ist
+dabei derselbe Test, der eine Lücke überhaupt erst invertiert, nur gegen die neue Richtung
+gelesen; `reaches()` delegiert dafür an `breaksThrough()`.
+
+Dasselbe Argument entscheidet die zweite abweichende Voreinstellung. Eine **gefüllte Lücke
+ist weg** — die Ineffizienz existiert auf keinem Preis mehr, sie auszublenden ist richtig.
+Eine **gebrochene Inversion ist nicht weg, sondern vorbei**: Sie galt von einer Bar bis zu
+einer anderen, und ihre Box endet dort ohnehin. Sie zusätzlich wegzufiltern löscht sie aus
+genau dem Stück Chart, auf dem sie galt. Deshalb steht `show` bei der IFVG auf „alles" und
+bei der FVG auf „nur offene".
+
+Gemeldet wurde das zweimal aus dem Chart, beide Male überprüfbar: eine Lücke vom 27.08. 18:00
+invertierte in der Nacht um 00:45 und wurde um 02:00 erneut gebrochen — mit der alten
+Voreinstellung wurde dafür nie etwas gezeichnet. Im Bildausschnitt eines Vier-Stunden-
+Fensters lagen 14 Inversionen, gezeichnet wurden 5.
+
+Weil beendete Zonen nur bis zu ihrem Ende laufen, füllen sie den Chart trotzdem nicht zu —
+im Gegensatz zu offenen, die bis zum rechten Rand reichen. Gezeichnet werden sie mit halber
+Deckkraft und gestrichelter Kante statt wie zuvor als reiner Umriss: Bei einer Inversion ist
+„beendet" der Normalfall (677 von 718), und ein Chart aus Haarlinien ist unlesbar.
+
+Die Voreinstellung steht an zwei Stellen — im Destructuring der Detektorfunktion und im
+Param-Schema. Ein Test vergleicht beide gegeneinander, statt darauf zu vertrauen, dass sie
+im Gleichschritt bleiben: Liefe eine Strategie mit `full` und der Chart mit `break`, wäre das
+wieder genau die Divergenz, gegen die `shared/indicators/` existiert.
+
+`originIndex` führt mit, aus welcher Lücke die Zone stammt, damit eine Strategie eine frische
+Inversion von einer unterscheiden kann, die zweihundert Bars gebraucht hat.
+
+### Zonenfarben
+
+Beide Zonen-Indikatoren tragen zwei Farbparameter (bullisch / bärisch). Gespeichert werden
+**Token-Namen, kein Hex**: dieselbe Wahl muss in Hell und Dunkel funktionieren, und das tut
+nur ein Token. Der Renderer setzt die Deckkraft ausschließlich über `globalAlpha` und backt
+sie nie zusätzlich in die Farbe — beides zusammen multipliziert sich, und eine Zone, die mit
+0,13 angefordert wurde, kommt mit 0,017 heraus. Dieselbe Falle ist in
+`drawings/drawingPrimitive.js` ausführlich dokumentiert.
+
+Die FVG steht voreingestellt auf den Kerzentönen (hell oben, blau unten — das Richtungs-
+vokabular aus Abschnitt 10), die IFVG auf Indikatorfarben. Beide sind meist gleichzeitig auf
+dem Chart und müssen auf einen Blick unterscheidbar sein; keine der Voreinstellungen ist blau
+(Kerzen) oder grün (Akzent). Ein Test prüft, dass jede Palettenfarbe als Token in
+`tokens.css` existiert — ein Name ohne Token löst zu einem leeren String auf und malt
+nichts, was auf dem Bildschirm wie ein Renderfehler aussieht.
 
 ### Volume Profile
 

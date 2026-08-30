@@ -1,6 +1,24 @@
 {
   "releases": [
     {
+      "version": "v0.1.2-dev",
+      "date": "Aug 2026",
+      "changes": [
+        {
+          "type": "feat",
+          "text": "Fair value gaps on the chart, under Add. A gap is drawn from the three bars that formed it and stays until price fills it — you decide what filling means: first touch, the midpoint, fully crossed, or a close beyond. A minimum size, a window of recent bars and a box width keep the chart as busy or as quiet as you want it"
+        },
+        {
+          "type": "feat",
+          "text": "Inverted fair value gaps as a second indicator. A gap that price closes through has failed, and the same prices then read the other way round: failed support becomes resistance. Each zone is drawn from the gap it came from, and a retest leaves it standing — it ends only when price closes back through it"
+        },
+        {
+          "type": "feat",
+          "text": "Both zone indicators let you pick the bullish and bearish colour yourself. The palette leads with the candle tones so a zone speaks the same up-is-light, down-is-blue language as the rest of the chart, and every choice works in light and dark"
+        }
+      ]
+    },
+    {
       "version": "v0.1.1-dev",
       "date": "Aug 2026",
       "changes": [

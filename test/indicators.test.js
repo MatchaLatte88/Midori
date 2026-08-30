@@ -39,10 +39,29 @@ test('ema returns all nulls when there is not enough data', () => {
 
 test('outputs always align one-to-one with the bars', () => {
   const bars = barsFromCloses([10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
-  for (const id of Object.keys(INDICATORS)) {
+  for (const [id, spec] of Object.entries(INDICATORS)) {
+    // Zone indicators describe regions, not one value per bar — see fvg.test.js.
+    if (spec.kind === 'zones') continue;
     const result = computeIndicator(id, bars);
     for (const [key, series] of Object.entries(result)) {
       assert.equal(series.length, bars.length, `${id}.${key} length must match bars`);
+    }
+  }
+});
+
+test('every zone indicator returns zones that point at real bars', () => {
+  const bars = barsFromCloses([10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
+  for (const [id, spec] of Object.entries(INDICATORS)) {
+    if (spec.kind !== 'zones') continue;
+    const { zones } = computeIndicator(id, bars);
+    assert.ok(Array.isArray(zones), `${id} must return a zones array`);
+    for (const z of zones) {
+      assert.ok(z.top > z.bottom, `${id}: a zone must have height`);
+      /* The bar a zone is drawn from can never be later than the bar that
+       * confirms it. They coincide for an inverted gap, which only starts to
+       * apply on the bar that breaks it. */
+      assert.ok(z.startIndex <= z.index, `${id}: startIndex must not follow index`);
+      assert.ok(z.index < bars.length, `${id}: index must be a real bar`);
     }
   }
 });

@@ -20,8 +20,24 @@
  * what keeps look-ahead impossible to introduce by accident: the engine hands a
  * strategy the slice [0..i], never the tail.
  *
+ * Two output shapes
+ * -----------------
+ * Most indicators are series — one value per bar, as above. A few describe a
+ * region of the chart instead: a price band that begins at one bar and ends
+ * when price comes back to it. Those declare `kind: 'zones'` and return
+ *
+ *   compute(bars, params) -> { zones: Array<{ top, bottom, startIndex, index }> }
+ *
+ * A zone keeps the bar that confirms it apart from the bar it is drawn from,
+ * so a strategy can never read a level into existence earlier than the market
+ * formed it. Series indicators leave `kind` off — that is the default.
+ *
  * `params` is validated by the caller against PARAM_SCHEMA; compute() trusts it.
  */
+
+import {
+  FVG_PARAMS, IFVG_PARAMS, detectFairValueGaps, detectInvertedFairValueGaps,
+} from './fvg.js';
 
 /** Reusable schema fragment — the UI generates its input fields from this. */
 const periodParam = (def, label = 'Period') => ({
@@ -278,6 +294,28 @@ export const INDICATORS = {
       return { value: out };
     },
   },
+
+  fvg: {
+    id: 'fvg',
+    name: 'Fair Value Gaps',
+    description: 'Three-bar imbalances, kept on the chart until price fills them.',
+    pane: 'price',
+    kind: 'zones',
+    params: FVG_PARAMS,
+    outputs: [{ key: 'zones', label: 'FVG', style: 'zone' }],
+    compute: detectFairValueGaps,
+  },
+
+  ifvg: {
+    id: 'ifvg',
+    name: 'Inverted FVG',
+    description: 'Gaps price broke through, read as the opposite kind of level.',
+    pane: 'price',
+    kind: 'zones',
+    params: IFVG_PARAMS,
+    outputs: [{ key: 'zones', label: 'IFVG', style: 'zone' }],
+    compute: detectInvertedFairValueGaps,
+  },
 };
 
 /** UTC period identifier used to reset anchored indicators. */
@@ -311,7 +349,7 @@ export function computeIndicator(id, bars, params = {}) {
       if (p.min !== undefined && n < p.min) throw new Error(`${id}.${p.key}: ${n} is below ${p.min}`);
       if (p.max !== undefined && n > p.max) throw new Error(`${id}.${p.key}: ${n} is above ${p.max}`);
       merged[p.key] = n;
-    } else if (p.type === 'select') {
+    } else if (p.type === 'select' || p.type === 'color') {
       if (!p.options.some((o) => o.value === given)) {
         throw new Error(`${id}.${p.key}: "${given}" is not one of ${p.options.map((o) => o.value).join(', ')}`);
       }

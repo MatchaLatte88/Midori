@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vu
 import { CandlestickSeries, HistogramSeries, LineSeries, createChart } from 'lightweight-charts';
 import { INDICATORS, computeIndicator } from '../../shared/indicators/index.js';
 import { VolumeProfilePrimitive } from './chart/volumeProfilePrimitive.js';
+import { FvgPrimitive } from './chart/fvgPrimitive.js';
 import { DrawingPrimitive } from './chart/drawings/drawingPrimitive.js';
 import { useDrawings } from './chart/drawings/useDrawings.js';
 import DrawingToolbar from './DrawingToolbar.vue';
@@ -35,6 +36,7 @@ let profileTimer = null;
 let profileToken = 0;   // guards against a slow response overwriting a newer one
 
 let vpPrimitive = null;
+let fvgPrimitive = null;
 let drawPrimitive = null;
 /** uid -> { series: ISeriesApi[], outputs: string[] } */
 const indicatorSeries = new Map();
@@ -161,9 +163,34 @@ function syncIndicators() {
   // shares a scale with something measured in price.
   let nextPane = 1;
 
+  /* Zone indicators do not get a series at all — they are rectangles, and the
+   * library has none. Every one of them feeds the same primitive, so a chart
+   * with three FVG settings on it still repaints in one pass. */
+  const zoneGroups = [];
+
   for (const ind of active) {
     const spec = INDICATORS[ind.id];
     if (!spec) continue;
+
+    if (spec.kind === 'zones') {
+      if (!ind.visible || bars.length === 0) continue;
+      try {
+        const { zones } = computeIndicator(ind.id, bars, ind.params);
+        zoneGroups.push({
+          zones,
+          // The midpoint is only meaningful when it is the rule that fills a gap.
+          midline: ind.params.mitigation === 'ce',
+          // Drawing-only, so these never reached compute() — see fvg.js.
+          boxWidth: ind.params.boxWidth,
+          bullColor: ind.params.bullColor,
+          bearColor: ind.params.bearColor,
+        });
+      } catch (err) {
+        setError(err);
+      }
+      continue;
+    }
+
     const paneIndex = spec.pane === 'separate' ? nextPane++ : 0;
 
     let entry = indicatorSeries.get(ind.uid);
@@ -207,6 +234,8 @@ function syncIndicators() {
       });
     });
   }
+
+  fvgPrimitive?.setGroups(zoneGroups);
 }
 
 /* ─── Volume profile ────────────────────────────────────────────────────── */
@@ -470,6 +499,9 @@ onMounted(() => {
   chart.value.priceScale('volume').applyOptions({
     scaleMargins: { top: 0.82, bottom: 0 },
   });
+
+  fvgPrimitive = new FvgPrimitive();
+  candles.value.attachPrimitive(fvgPrimitive);
 
   vpPrimitive = new VolumeProfilePrimitive({
     width: session.volumeProfile.width,

@@ -17,6 +17,15 @@ function specFor(id) {
   return INDICATORS[id];
 }
 
+/* A zone indicator carries its own pair of colours, so its swatch shows both;
+ * everything else takes the colour slot it was given when it was added. */
+function swatchFor(ind) {
+  const spec = INDICATORS[ind.id];
+  if (spec.kind !== 'zones') return `var(--ind-${ind.colorIndex})`;
+  return 'linear-gradient(135deg, '
+    + `var(--${ind.params.bullColor}) 0 50%, var(--${ind.params.bearColor}) 50%)`;
+}
+
 function add(spec) {
   addIndicator(spec);
   picking.value = false;
@@ -182,7 +191,9 @@ function fmtCount(n) {
 
     <div v-for="ind in session.indicators" :key="ind.uid" class="indicator">
       <div class="indicator-head">
-        <span class="swatch" :style="{ background: `var(--ind-${ind.colorIndex})` }"></span>
+        <!-- A zone indicator is coloured by direction, so its swatch shows both
+             of its chosen colours rather than one slot colour. -->
+        <span class="swatch" :style="{ background: swatchFor(ind) }"></span>
         <span class="indicator-name">{{ specFor(ind.id).name }}</span>
         <button
           class="icon-btn"
@@ -206,8 +217,19 @@ function fmtCount(n) {
       <div class="indicator-params">
         <label v-for="p in specFor(ind.id).params" :key="p.key" class="field field--inline">
           <span class="k-mono-label">{{ p.label }}</span>
+          <div v-if="p.type === 'color'" class="swatches">
+            <button
+              v-for="o in p.options"
+              :key="o.value"
+              class="pick"
+              :class="{ 'is-active': o.value === ind.params[p.key] }"
+              :style="{ background: `var(--${o.value})` }"
+              :title="o.label"
+              @click="updateIndicatorParam(ind.uid, p.key, o.value)"
+            ></button>
+          </div>
           <select
-            v-if="p.type === 'select'"
+            v-else-if="p.type === 'select'"
             class="input input--sm"
             :value="ind.params[p.key]"
             @change="updateIndicatorParam(ind.uid, p.key, $event.target.value)"
@@ -340,5 +362,18 @@ function fmtCount(n) {
 .indicator-head { display: flex; align-items: center; gap: 7px; }
 .indicator-name { flex: 1; font-weight: 600; font-size: 12px; }
 .swatch { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
+
+/* Colour picker — the same swatch row as the position style bar, sized down to
+   fit a side panel rather than a floating toolbar. */
+.swatches { display: flex; gap: 2px; }
+.pick {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1px solid var(--brd);
+  padding: 0;
+  cursor: pointer;
+}
+.pick.is-active { outline: 1.5px solid var(--txt); outline-offset: 1px; }
 .indicator-params { display: flex; flex-direction: column; gap: 5px; }
 </style>

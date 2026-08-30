@@ -65,15 +65,24 @@ Minuten.
 
 ## Indikatoren
 
-Vorhanden sind SMA, EMA, Bollinger Bands, RSI, ATR, VWAP und das Volume Profile mit POC und
-Value Area. Oszillatoren bekommen eine eigene Chart-Ebene, damit eine 0–100-Skala nie mit
-Preisen zusammengelegt wird.
+Vorhanden sind SMA, EMA, Bollinger Bands, RSI, ATR, VWAP, Fair Value Gaps, Inverted Fair
+Value Gaps und das Volume Profile mit POC und Value Area. Oszillatoren bekommen eine eigene Chart-Ebene, damit eine
+0–100-Skala nie mit Preisen zusammengelegt wird.
 
 Zwei Dinge sind dabei bewusst so gebaut:
 
 - Indikatoren liegen in `shared/indicators/` und werden vom Chart **und** später von der
   Backtest-Engine importiert. Eine zweite Implementierung könnte abweichen — und dann würde
   der Bot etwas anderes handeln, als du auf dem Chart siehst.
+- **Fair Value Gaps** merken sich getrennt, wo die Lücke liegt und ab welcher Bar sie
+  überhaupt bekannt war. Nur so kann eine Strategie sie nicht zwei Bars zu früh handeln.
+  Wann eine Lücke als gefüllt gilt (Berührung, Mittellinie, ganz durchlaufen), stellst du
+  selbst ein — ebenso, ob nur die Lücken der letzten N Bars gezeigt werden und wie breit die
+  Box gezeichnet wird. 0 heißt bei beiden „kein Limit". **Inverted FVGs** sind Lücken, durch
+  die der Preis geschlossen hat: aus gescheiterter Unterstützung wird Widerstand. Sie
+  verschwinden nicht, wenn der Preis sie testet — das ist ihr Zweck —, sondern erst, wenn er
+  jenseits von ihnen schließt. Beide Indikatoren lesen dieselbe Lückendefinition, und beide
+  Farben wählst du selbst.
 - Das **Volume Profile rechnet immer auf 1m-Bars**, egal welchen Timeframe der Chart zeigt.
   Wer stattdessen die angezeigten Bars profiliert, bekommt auf dem 4h-Chart einen anderen
   POC als auf dem 5m-Chart.
