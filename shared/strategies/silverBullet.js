@@ -64,6 +64,10 @@ export const SILVER_BULLET_STRATEGY = {
     + 'Enters on the signal bar and exits at a fixed reward-to-risk.',
   /** The chart indicator this is built on, so the UI can offer to draw it. */
   indicator: 'silverbullet',
+  /* Which parameters change what is detected rather than what is done about
+   * it. A sweep reuses one detection across every combination that shares
+   * these, so they are what decides how long it takes — see detectionCount. */
+  detectorKeys: DETECTOR_KEYS,
   params: [...RISK_PARAMS, ...DETECTOR_PARAMS],
 
   build(params) {

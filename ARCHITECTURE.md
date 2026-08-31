@@ -942,6 +942,135 @@ Aus demselben Grund wie das Volume Profile: Die Bars liegen schon dort. Ein Jahr
 die Brücke zu schicken, dort zu rechnen und zurückzuschicken, bewegte zig Megabyte für nichts.
 Über die Brücke geht nur die fertige Zusammenfassung.
 
+## 8c. Automatische Backtests (Sweeps)
+
+### Was ein Sweep ist und wogegen er abgesichert werden muss
+
+Ein Sweep probiert jede Kombination mehrerer Wertebereiche durch — FVG-Größe 4 bis 20 mal
+CRV 1,2 bis 3,0 sind 323 Läufe — und stellt die besten den schlechtesten gegenüber.
+
+Er ist damit vor allem **eine Maschine zum Überanpassen**. Wer dreihundert Kombinationen auf
+einem Stück Historie testet und die beste behält, hat meistens die gefunden, die genau dieses
+Stück auswendig gelernt hat. Sie sieht hervorragend aus und bedeutet nichts.
+
+Deshalb wird der Zeitraum **geteilt**. Alle Kombinationen werden auf dem früheren Teil
+gerankt; nur die wenigen, die angezeigt werden, laufen danach über den späteren Teil, der bei
+der Auswahl kein Mitspracherecht hatte. Zwei Zahlen pro Kombination, und die Lücke dazwischen
+ist der eigentliche Befund. Nur die Angezeigten nachzurechnen ist bewusste Sparsamkeit: Alle
+323 zu prüfen verdoppelte die Kosten für Zahlen, die niemand ansieht.
+
+Der Testabschnitt ist der **spätere**. Eine auf neuen Daten optimierte Regel gegen ältere zu
+prüfen, prüft sie gegen einen Markt, der vorher kam — das beantwortet nichts.
+
+### Warum das überhaupt bezahlbar ist
+
+Gemessen auf 12 Monaten BTC-5m: Ein einzelner Lauf kostet 1.967 ms, und **1.975 ms davon sind
+die Erkennung** — praktisch alles. Das Bucketing der Minutenbars sind 19 ms.
+
+Entscheidend ist, dass die Erkennung nicht von jedem Parameter abhängt. `rrr`, `riskValue`,
+`riskMode` und `maxLeverage` ändern, was die Strategie mit einem Setup *tut*, nicht welche
+Setups es gibt. `runBacktest` nimmt deshalb einen optionalen `indicatorCache`, den der
+Sweep-Läufer pro Abschnitt anlegt. Dein Beispiel — 17 Größen mal 19 CRV-Werte — braucht damit
+17 Erkennungen statt 323: **23 Sekunden statt zehn Minuten**.
+
+Der Cache ist nach Indikator und Parametern verschlüsselt und **nicht** nach den Bars. Damit
+ist es Aufgabe des Aufrufers, pro Bar-Array einen eigenen zu führen; wer einen zwischen
+Trainings- und Testabschnitt teilt, bekommt die Setups des einen gegen die Bars des anderen
+gerechnet. Der Läufer legt genau deshalb zwei an.
+
+### Sweeps werden nicht gespeichert
+
+Ein Sweep ist eine einmal gestellte Frage — „spielt dieser Parameter hier überhaupt eine
+Rolle" — und seine Antwort wird an Ort und Stelle gelesen. Eine Bibliothek davon wäre ein
+zweites Archiv neben den Läufen, für Ergebnisse, zu denen niemand zurückkehrt. Eine
+Kombination, die es wert ist, behalten zu werden, ist es wert, als **Backtest** nachgerechnet
+zu werden — und der wird gespeichert.
+
+Das Ergebnis lebt also so lange wie die Ansicht. Das Panel sagt das, bevor der Sweep startet,
+statt es hinterher zu offenbaren.
+
+### Werte in den Backtest übernehmen
+
+Jede angezeigte Kombination hat einen *Use*-Knopf: Er trägt die Einstellungen in das
+Backtest-Formular ein und wechselt dorthin. Damit ist der Sweep die grobe Suche und der
+Backtest die genaue Abrechnung — mit Trade-Durchsicht und gespeichertem Report, die beide der
+Sweep bewusst nicht hat.
+
+Übergeben wird über `session.handoff`. Die beiden Ansichten sind Geschwister, die nie
+gleichzeitig gemountet sind, es gibt also keine Komponente dazwischen, durch die sich ein Prop
+reichen ließe. Der Wert wird beim Lesen **verbraucht** (`takeHandoff`): Bliebe er liegen,
+würden dieselben Einstellungen bei jedem Öffnen des Backtest-Tabs erneut angewandt und still
+überschreiben, was inzwischen editiert wurde.
+
+**Markt und Timeframe reisen mit** und werden auf die Sitzung angewandt. Eine auf BTC-5m
+gefundene Kombination bedeutet nichts, gegen das gerechnet, was der Chart gerade zeigt — und
+das stillschweigend zu tun, wäre die Sorte Fehler, die richtig aussieht.
+
+Eine Kombination trägt **alle** Parameter, nicht nur die variierten: `expandSweep` setzt zwar
+nur die gesweepten Schlüssel, aber die Basis kommt aus den Schema-Defaults. Das Formular
+mischt sie trotzdem über seine eigenen Defaults, damit ein Sweep von vor einer neuen
+Einstellung diese nicht auf `undefined` setzt. Festgehalten in `test/handoff.test.js`.
+
+Der übernommene Zeitraum ist der **ganze** des Sweeps, nicht nur der zurückgehaltene Teil. Das
+ist der Zeitraum, nach dem gefragt wurde, und macht den Report mit jedem anderen Backtest über
+dieselbe Spanne vergleichbar. Er enthält damit aber die Bars, auf denen die Einstellungen
+ausgewählt wurden — der Report liest sich also freundlicher als die Out-of-Sample-Spalte, und
+sowohl der Knopf als auch das Formular sagen das.
+
+### Das Limit ist kein Zeitbudget
+
+`MAX_COMBINATIONS` steht auf 100.000 und ist eine Absicherung gegen Vertipper, nicht gegen
+Ehrgeiz: Ein Schritt von 0,001 statt 0,1 expandiert auf Millionen, und das gehört abgelehnt,
+bevor irgendetwas startet.
+
+Als Zeitbudget taugt die Zahl nicht, denn was eine Kombination kostet, hängt vollständig davon
+ab, **welcher** Parameter variiert wird. `detectionCount` beantwortet das: Es zählt nur die
+Bereiche über Parameter, die die Erkennung berühren. 323 Kombinationen über eine einzige
+Erkennung sind Sekunden, 323 über 323 Erkennungen sind Minuten. Das Panel zeigt beide Zahlen
+nebeneinander, und die zweite ist die, auf die es ankommt.
+
+### Ein eigener Thread, nicht der Hauptprozess
+
+Ein Sweep sind Minuten bis Stunden ununterbrochener Rechnerei. Im Hauptprozess hielte er die
+Event-Loop für die gesamte Dauer: kein IPC, keine Fensterereignisse, kein Fortschritt — eine
+App, die aussieht, als sei sie abgestürzt. Also läuft er in `sweepWorker.js` auf einem
+Worker-Thread, und `sweepManager.js` besitzt genau einen davon.
+
+Die Bars werden **im Worker gelesen**, nicht hineingeschickt. Ein Jahr 5m plus die Minuten
+darunter sind über eine halbe Million Objekte; die über die Thread-Grenze zu klonen kostet
+mehr als die Datei erneut zu lesen.
+
+**Abgebrochen wird über einen `SharedArrayBuffer`**, nicht per Nachricht. Der Worker gibt
+während der Schleife nie an seine Nachrichtenschlange ab, ein gesendeter Stopp würde also erst
+gelesen, wenn der Sweep ohnehin fertig wäre. Ein geteiltes Byte lässt sich zwischen zwei
+Kombinationen lesen. Der Abbruch ist kooperativ und damit verlustfrei: Terminieren wäre
+sofortig, würfe aber die bereits gerechneten Kombinationen weg.
+
+### Ranking
+
+Voreinstellung ist der **Erwartungswert pro Trade**: Er fragt, ob die Regel selbst etwas taugt,
+unabhängig davon, wie oft sie feuerte und wie groß die Positionen waren. Nettogewinn belohnt,
+was am meisten handelte und am meisten riskierte; der Profitfaktor ignoriert, wie selten die
+Trades waren. Keines ist allein sicher, alle drei sind wählbar.
+
+Dafür gibt es `minTrades`: Eine Kombination mit vier Trades kann jedes Maß per Zufall anführen,
+und sie als beste zu melden wäre der Sweep, der über seinen eigenen Fund lügt. Zu seltene
+Kombinationen werden nicht schlecht gerankt, sondern **aussortiert** — und die Zahl der
+Aussortierten wird gemeldet, statt sie stillschweigend zu verlieren.
+
+Auch das schlechte Ende wird gezeigt, nie nur die Gewinner: Der Abstand zwischen beiden Enden
+sagt, ob der Parameter überhaupt etwas bewirkt. Liegen vier Kombinationen alle auf einem Haar
+beieinander, ist die Einstellung nicht das, was das Ergebnis treibt — und das verrät erst die
+Zahl des Verlierers.
+
+### Fließkomma in Bereichen
+
+Ein Bereich von 1,2 bis 3,0 in Schritten von 0,1, durch fortgesetzte Addition gelaufen, kommt
+bei 1.9000000000000001 an und speichert das als Parameter. Zwei Sweeps, die identisch sein
+müssten, sind es dann nicht, und ein gespeichertes Ergebnis liest sich wie Rauschen. Jeder Wert
+wird deshalb als `from + index * step` berechnet und auf die Nachkommastellen gerundet, die der
+Schritt selbst trägt. Festgehalten in `test/sweep.test.js`.
+
 ## 9. Bot-API (geplant, Abschnitt 11 M3)
 
 Strategien sind JavaScript-Module, kein DSL:

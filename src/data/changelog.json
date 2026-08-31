@@ -1,6 +1,32 @@
 {
   "releases": [
     {
+      "version": "v0.1.7-dev",
+      "date": "Sep 2026",
+      "changes": [
+        {
+          "type": "feat",
+          "text": "An Auto backtest tab that tries a whole range of settings at once. Switch any number from Fixed to Range, give it a from, a to and a step, and every combination is run and ranked - the best four against the worst four, because the gap between the two ends is what says whether the setting mattered at all"
+        },
+        {
+          "type": "feat",
+          "text": "Every sweep holds part of the range back. The combinations are ranked on the earlier stretch and the ones shown are re-run on the later one, which had no say in choosing them. Where the two numbers disagree the first was noise - trying hundreds of settings on one stretch of history reliably finds the one that memorised it"
+        },
+        {
+          "type": "feat",
+          "text": "Any result can be sent straight to the Backtest tab with its market, its range and every setting filled in, so a promising combination gets a full report with its trades to step through. The sweep is the search; the backtest is the reckoning"
+        },
+        {
+          "type": "feat",
+          "text": "Sweeps run on their own thread with a progress bar, an estimate of the time left, and a stop button that works between combinations. The app stays usable while one runs, however long it takes"
+        },
+        {
+          "type": "perf",
+          "text": "A sweep reuses what it can. Settings that only change what is done with a signal - risk, reward-to-risk, leverage - do not need the signals found again, so the panel shows how many detections a sweep really needs beside how many runs. Trying 17 gap sizes against 19 reward levels on a year of 5-minute bars takes 23 seconds rather than ten minutes"
+        }
+      ]
+    },
+    {
       "version": "v0.1.6-dev",
       "date": "Aug 2026",
       "changes": [

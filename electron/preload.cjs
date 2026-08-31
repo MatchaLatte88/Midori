@@ -34,6 +34,22 @@ contextBridge.exposeInMainWorld('midori', {
     annotate: (id, note) => ipcRenderer.invoke('backtest:annotate', { id, note }),
   },
 
+  sweep: {
+    /* Resolves with the finished sweep, or { cancelled: true }. Nothing is
+     * stored: the result lives as long as the page shows it. Progress arrives
+     * through onProgress, not through this promise — it can run for hours. */
+    run: (request) => ipcRenderer.invoke('sweep:run', request),
+    stop: () => ipcRenderer.invoke('sweep:stop'),
+    running: () => ipcRenderer.invoke('sweep:running'),
+
+    /** Returns an unsubscribe function — callers must call it on unmount. */
+    onProgress: (fn) => {
+      const listener = (_e, payload) => fn(payload);
+      ipcRenderer.on('sweep:progress', listener);
+      return () => ipcRenderer.off('sweep:progress', listener);
+    },
+  },
+
   ui: {
     /** Keeps the native title bar in step with the app's theme. */
     setTheme: (theme) => ipcRenderer.invoke('ui:set-theme', theme),

@@ -12,13 +12,17 @@
  */
 import { computed, onMounted, ref, watch } from 'vue';
 import ParamFields from './ParamFields.vue';
-import { datasetFor, session, setError, setView } from '../stores/session.js';
+import {
+  datasetFor, selectSymbol, session, setError, setTimeframe, setView, takeHandoff,
+} from '../stores/session.js';
 
 const catalog = ref([]);
 const strategyId = ref(null);
 const params = ref({});
 const running = ref(false);
 const lastRun = ref(null);
+/** Set when the form was filled from a sweep, so the panel can say where from. */
+const fromSweep = ref(false);
 
 /** Account settings — the run's, not the strategy's. */
 const balance = ref(10_000);
@@ -44,10 +48,41 @@ onMounted(async () => {
   try {
     catalog.value = await window.midori.backtest.strategies();
     if (catalog.value.length > 0) select(catalog.value[0].id);
+    applyHandoff();
   } catch (err) {
     setError(err);
   }
 });
+
+/**
+ * Fills the form from a sweep result, if one was sent here.
+ *
+ * Taken after the catalog has loaded, because `select` resets the parameters
+ * to the schema defaults and would wipe what arrived. The market travels with
+ * the settings and is applied to the session: a combination found on BTC 5m
+ * means nothing run against whatever the chart happens to be showing, and
+ * doing that silently would be the kind of wrong that looks right.
+ */
+function applyHandoff() {
+  const pending = takeHandoff();
+  if (!pending) return;
+
+  if (pending.strategy && catalog.value.some((s) => s.id === pending.strategy)) {
+    select(pending.strategy);
+  }
+  /* Merged over the defaults rather than replacing them, so a sweep made
+   * before a strategy gained a setting still leaves that setting valid. */
+  if (pending.params) params.value = { ...params.value, ...pending.params };
+
+  if (pending.symbol && pending.symbol !== session.symbol) selectSymbol(pending.symbol);
+  if (pending.timeframe && pending.timeframe !== session.timeframe) setTimeframe(pending.timeframe);
+
+  if (Number.isFinite(pending.from)) from.value = isoDay(pending.from);
+  if (Number.isFinite(pending.to)) to.value = isoDay(pending.to);
+  if (Number.isFinite(pending.balance)) balance.value = pending.balance;
+
+  fromSweep.value = true;
+}
 
 /* The range follows the data that actually exists for the symbol. A default of
  * "everything downloaded" is both the most useful starting point and the only
@@ -64,6 +99,7 @@ function select(id) {
   // Start from the schema defaults, so every field has a value from the outset.
   params.value = Object.fromEntries((found?.params ?? []).map((p) => [p.key, p.default]));
   lastRun.value = null;
+  fromSweep.value = false;
 }
 
 function patch(update) {
@@ -137,6 +173,11 @@ const money = (v) => (v == null ? '—' : v.toLocaleString(undefined, {
       </div>
 
       <template v-if="spec">
+        <p v-if="fromSweep" class="from-sweep k-mono-label">
+          Filled from a sweep. This range includes the bars these settings were chosen on,
+          so expect a friendlier result than the sweep's out-of-sample column.
+        </p>
+
         <div class="k-divider-h"></div>
         <span class="k-eyebrow">Account</span>
 
@@ -282,6 +323,17 @@ const money = (v) => (v == null ? '—' : v.toLocaleString(undefined, {
 
 .range-note { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 .warn { color: var(--neg); }
+
+/* Says where the values came from, and what that costs in how they read. */
+.from-sweep {
+  margin: 0;
+  padding: 7px 9px;
+  border: 1px solid var(--accent-brd);
+  border-radius: var(--radius-sm);
+  background: var(--accent-bg);
+  color: var(--sec);
+  line-height: 1.45;
+}
 
 .run { margin-top: 6px; }
 

@@ -13,6 +13,11 @@ const state = reactive({
    * across all of them: a backtest runs on what the chart is looking at, so
    * switching to it must not mean choosing the market a second time. */
   view: 'chart',
+  /* A set of settings on its way from one view to another — a sweep result
+   * being handed to the backtest form. Held here rather than passed as a prop
+   * because the two views are siblings that are never mounted together, so
+   * there is no component between them to route it through. */
+  handoff: null,
   loading: false,
   error: null,
   /** 'system' | 'light' | 'dark' — read from storage below. */
@@ -58,11 +63,37 @@ export function selectSymbol(symbol) {
   state.symbol = symbol;
 }
 
-export const VIEWS = ['chart', 'backtest', 'results'];
+export const VIEWS = ['chart', 'backtest', 'sweep', 'results'];
 
 export function setView(view) {
   if (!VIEWS.includes(view)) throw new Error(`Unknown view "${view}". Known: ${VIEWS.join(', ')}`);
   state.view = view;
+}
+
+/**
+ * Sends a set of parameters to the backtest form and goes there.
+ *
+ * The symbol and timeframe travel with them: a combination found on BTC 5m
+ * means nothing applied to whatever the chart happens to be showing now, and
+ * silently running it against a different market would be the kind of wrong
+ * that looks right.
+ */
+export function sendToBacktest(config) {
+  state.handoff = { ...config };
+  state.view = 'backtest';
+}
+
+/**
+ * Takes the pending settings, if any, and clears them.
+ *
+ * Consumed rather than read: leaving it in place would re-apply the same
+ * settings every time the backtest tab is opened, quietly undoing whatever was
+ * edited since.
+ */
+export function takeHandoff() {
+  const pending = state.handoff;
+  state.handoff = null;
+  return pending;
 }
 
 export function setTimeframe(tf) {

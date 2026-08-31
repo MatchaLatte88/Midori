@@ -119,6 +119,19 @@ Zwei Dinge sind dabei bewusst so gebaut:
   der Chart auf den ersten Trade und zeichnet ihn als Positionsblock — Risikozone zum Stop,
   Gewinnzone zum Ziel, Marken an Ein- und Ausstieg —, mit Kontext davor und danach. „Next
   trade" geht zum nächsten.
+- Der **Auto-Backtest** probiert Wertebereiche durch: Du schaltest jeden Zahlenparameter
+  einzeln von *Fixed* auf *Range* und gibst von/bis/Schritt an; die App rechnet jede
+  Kombination und stellt die besten vier den schlechtesten vier gegenüber. Sie läuft auf einem
+  eigenen Thread, zeigt Fortschritt samt Restzeit und lässt sich jederzeit stoppen.
+  Jede gezeigte Kombination hat einen **Use**-Knopf: Er trägt die Werte samt Markt und
+  Zeitraum ins Backtest-Formular ein und wechselt dorthin — dort bekommst du Trade-Durchsicht
+  und einen gespeicherten Report.
+  **Sweep-Ergebnisse selbst werden nicht gespeichert** — sie leben so lange wie die Ansicht. Eine
+  Kombination, die du behalten willst, rechnest du im Backtest-Tab nach; der wird gespeichert.
+  **Wichtig ist die Out-of-Sample-Spalte:** Gerankt wird auf dem früheren Teil des Zeitraums,
+  die gezeigten Kombinationen werden auf dem späteren nachgerechnet. Wo die beiden Zahlen
+  auseinandergehen, war die erste Zufall. FVG-Größe 4–20 mal CRV 1,2–3,0 sind 323
+  Kombinationen und brauchen auf einem Jahr BTC-5m rund 23 Sekunden.
 - Das **Volume Profile rechnet immer auf 1m-Bars**, egal welchen Timeframe der Chart zeigt.
   Wer stattdessen die angezeigten Bars profiliert, bekommt auf dem 4h-Chart einen anderen
   POC als auf dem 5m-Chart.
@@ -215,6 +228,7 @@ electron/
 shared/
   indicators/       von Chart und Engine gemeinsam genutzt: index.js, volumeProfile.js
   strategies/       backtestbare Regeln: Registry, Risiko/Sizing, silverBullet.js
+  analysis/sweep.js Kombinationen, Ranking, Zeitraum-Split — ohne Engine testbar
   analysis/         Kennzahlen eines fertigen Laufs (Equity ab 0, Serien, Aufschlüsselung)
 strategies/       Beispielstrategien (sma-cross.js)
 src/

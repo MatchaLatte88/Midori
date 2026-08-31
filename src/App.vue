@@ -5,6 +5,7 @@ import DataManager from './components/DataManager.vue';
 import IndicatorPanel from './components/IndicatorPanel.vue';
 import BacktestPanel from './components/BacktestPanel.vue';
 import ResultsPage from './components/ResultsPage.vue';
+import SweepPanel from './components/SweepPanel.vue';
 import ChangelogModal from './components/ChangelogModal.vue';
 import HintTooltip from './components/HintTooltip.vue';
 import { APP_VERSION } from './generated/version.js';
@@ -20,6 +21,7 @@ import {
 const NAV = [
   { id: 'chart', label: 'Chart' },
   { id: 'backtest', label: 'Backtest' },
+  { id: 'sweep', label: 'Auto backtest' },
   { id: 'results', label: 'Results' },
 ];
 
@@ -122,6 +124,7 @@ onMounted(async () => {
     </template>
 
     <BacktestPanel v-else-if="session.view === 'backtest'" />
+    <SweepPanel v-else-if="session.view === 'sweep'" />
     <ResultsPage v-else />
   </main>
 

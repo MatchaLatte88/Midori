@@ -17,6 +17,8 @@ import {
   annotateRun, deleteRun, listRuns, loadRun, saveRun,
 } from './data/store/runStore.js';
 import { runBacktest } from './engine/backtest.js';
+import { isSweepRunning, startSweep, stopSweep } from './engine/sweepManager.js';
+import { countCombinations } from '../shared/analysis/sweep.js';
 import { STRATEGIES, buildStrategy, strategyCatalog } from '../shared/strategies/index.js';
 import { applyTitleBarTheme } from './titlebar.js';
 
@@ -34,6 +36,7 @@ export function drawingsDir() {
 export function runsDir() {
   return path.join(app.getPath('userData'), 'backtests');
 }
+
 
 function requireString(value, name) {
   if (typeof value !== 'string' || !value.trim()) {
@@ -172,6 +175,80 @@ export function registerIpc() {
   ipcMain.handle('backtest:annotate', (_e, { id, note }) => (
     annotateRun(runsDir(), requireString(id, 'id'), note)
   ));
+
+  /* ─── Sweeps ────────────────────────────────────────────────────────── */
+
+  /* The sweep itself runs on a worker thread — see sweepManager. This handler
+   * therefore stays responsive for hours, and its promise resolves only when
+   * the whole thing is finished, stopped or broken.
+   *
+   * Nothing is stored. A sweep is a question asked once — "does this parameter
+   * matter here" — and its answer is read on the spot; keeping a library of
+   * them would be a second archive to manage beside the runs, for results
+   * nobody goes back to. A combination worth keeping is worth re-running as a
+   * backtest, and that one does get stored. */
+  ipcMain.handle('sweep:run', async (event, request) => {
+    const {
+      strategy: strategyId, ranges = {}, base = {}, symbol, timeframe, from, to,
+      balance = 10_000, trainFraction = 0.7, metric = 'expectancy',
+      minTrades = 10, showCount = 4,
+    } = request ?? {};
+
+    requireString(strategyId, 'strategy');
+    if (!STRATEGIES[strategyId]) {
+      throw new Error(`Unknown strategy "${strategyId}". `
+        + `Known: ${Object.keys(STRATEGIES).join(', ')}`);
+    }
+    requireString(symbol, 'symbol');
+    requireTimeframe(timeframe);
+    if (!Number.isFinite(from) || !Number.isFinite(to)) {
+      throw new Error('from and to must be timestamps in milliseconds');
+    }
+    if (to <= from) throw new Error('The sweep range must end after it starts');
+    if (!Number.isFinite(balance) || balance <= 0) {
+      throw new Error('The starting balance must be a positive number');
+    }
+    /* Counted here, before a worker is started: a range that expands to
+     * millions should be refused in the click that asked for it, not after
+     * spinning up a thread that immediately throws. */
+    if (countCombinations(ranges) === 0) {
+      throw new Error('Give at least one parameter a range to sweep');
+    }
+    if (isSweepRunning()) throw new Error('A sweep is already running');
+
+    const sender = BrowserWindow.fromWebContents(event.sender);
+    const onEvent = (payload) => sender?.webContents.send('sweep:progress', payload);
+
+    const result = await startSweep({
+      dataDir: dataDir(),
+      symbol,
+      timeframe,
+      from,
+      to,
+      strategy: strategyId,
+      ranges,
+      base,
+      balance,
+      trainFraction,
+      metric,
+      minTrades,
+      showCount,
+    }, onEvent);
+
+    // Stopped on request: not an error either.
+    if (result.cancelled) return { cancelled: true };
+
+    return {
+      ...result,
+      strategyName: STRATEGIES[strategyId].name,
+      symbol,
+      timeframe,
+    };
+  });
+
+  ipcMain.handle('sweep:stop', () => stopSweep());
+
+  ipcMain.handle('sweep:running', () => isSweepRunning());
 
   ipcMain.handle('data:download', async (event, { symbol, from, to }) => {
     const sym = requireString(symbol, 'symbol').toUpperCase();
