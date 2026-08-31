@@ -9,6 +9,10 @@ const state = reactive({
   datasets: [],          // metadata for every dataset on disk
   symbol: null,          // currently charted symbol
   timeframe: '15m',
+  /* Which top-level view is showing. The symbol and timeframe stay shared
+   * across all of them: a backtest runs on what the chart is looking at, so
+   * switching to it must not mean choosing the market a second time. */
+  view: 'chart',
   loading: false,
   error: null,
   /** 'system' | 'light' | 'dark' — read from storage below. */
@@ -54,8 +58,19 @@ export function selectSymbol(symbol) {
   state.symbol = symbol;
 }
 
+export const VIEWS = ['chart', 'backtest', 'results'];
+
+export function setView(view) {
+  if (!VIEWS.includes(view)) throw new Error(`Unknown view "${view}". Known: ${VIEWS.join(', ')}`);
+  state.view = view;
+}
+
 export function setTimeframe(tf) {
   state.timeframe = tf;
+}
+
+export function clearError() {
+  state.error = null;
 }
 
 export function setError(err) {

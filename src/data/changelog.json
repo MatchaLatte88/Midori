@@ -1,6 +1,44 @@
 {
   "releases": [
     {
+      "version": "v0.1.6-dev",
+      "date": "Aug 2026",
+      "changes": [
+        {
+          "type": "feat",
+          "text": "Strategies are their own thing now, next to indicators: the moment something says buy here, risk this much and get out there, it can be backtested. Silver Bullet is the first, and it still draws on the chart as before - one definition, used twice, so what you see and what you test can never drift apart"
+        },
+        {
+          "type": "feat",
+          "text": "A Backtest tab that runs a strategy over the symbol and timeframe the chart is already showing. You set the starting balance, the date range, how much one trade may lose - as a percent of the account or a fixed amount - where the target sits relative to that, and a ceiling on how much the position may carry. Every strategy setting has its own field and its own explanation"
+        },
+        {
+          "type": "feat",
+          "text": "A Results tab that keeps every run. Equity from zero, win rate, net profit, maximum drawdown, profit factor, expectancy, the longest winning and losing streaks, and a breakdown by direction, by session and by how each trade ended. Ctrl-click to lay several runs over each other - compared in percent, because in money the run that started richer always wins"
+        },
+        {
+          "type": "feat",
+          "text": "Step through a run's trades one at a time. The chart jumps to each trade, framed on it with the bars either side, and draws it the way the position tool does: risk zone to the stop, reward zone to the target, entry, direction, reward-to-risk, and what the trade actually made"
+        },
+        {
+          "type": "feat",
+          "text": "Every stored run keeps what it was run with - the market, the range, the balance, every strategy parameter and the costs it was charged - and shows them under the figures. A result without its settings cannot be compared to anything"
+        },
+        {
+          "type": "feat",
+          "text": "Anything that deletes for good now asks first, and says what will be lost. The Delete key still removes a selected drawing straight away: that is deliberate enough already, and a prompt on every press would make tidying up a chart a chore"
+        },
+        {
+          "type": "fix",
+          "text": "Position sizes are capped at what the account can actually carry. Risking a percent behind a tight stop asks for many times the balance, and the fees on that phantom size decided the result - a month of BTC turned 54 trades into 4,924 of fees against a 10,000 account, where the same run now pays 995"
+        },
+        {
+          "type": "fix",
+          "text": "Errors are shown wherever they happen. They used to be rendered only inside the chart's data panel, so anything that went wrong elsewhere was caught, stored and shown to nobody"
+        }
+      ]
+    },
+    {
       "version": "v0.1.5-dev",
       "date": "Aug 2026",
       "changes": [

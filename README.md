@@ -104,6 +104,21 @@ Zwei Dinge sind dabei bewusst so gebaut:
   nach New Yorker Zeit. Entry, Stop und Ziel werden gleich mitgezeichnet, samt Ausgang. Der
   Ausgang ist eine pessimistische Schätzung: Trifft eine Bar Stop und Ziel, gilt der Stop.
   Genau abrechnen kann das nur die Engine, die dafür Minutenbars nachlädt.
+- **Backtests** laufen über den Reiter *Backtest* auf dem Symbol und Timeframe, den der Chart
+  gerade zeigt. Du setzt Startkapital, Zeitraum, Risiko je Trade (Prozent oder fester Betrag),
+  das Chance-Risiko-Verhältnis und einen Hebeldeckel — der steht auf 1, weil risikobasierte
+  Größen bei engen Stops sonst das Zwanzigfache des Kontos verlangen und die Gebühren darauf
+  das Ergebnis bestimmen. Ergebnisse landen unter *Results*: Equity ab null, Winrate, PnL,
+  Drawdown, Profitfaktor, Serien und die Aufschlüsselung nach Richtung, Fenster und Ausgang.
+  Mit Strg-Klick vergleichst du mehrere Läufe in Prozent — in Geld wäre der Lauf mit dem
+  größeren Startkapital immer im Vorteil.
+  Unter den Kennzahlen steht, **womit der Lauf lief** — Markt, Zeitraum, Startkapital, jeder
+  Strategieparameter und die berechneten Kosten —, damit sich zwei Ergebnisse überhaupt
+  vergleichen lassen.
+  Bei einem einzelnen Lauf schaltest du oben zwischen *Analysis* und *Trades* um: Dort springt
+  der Chart auf den ersten Trade und zeichnet ihn als Positionsblock — Risikozone zum Stop,
+  Gewinnzone zum Ziel, Marken an Ein- und Ausstieg —, mit Kontext davor und danach. „Next
+  trade" geht zum nächsten.
 - Das **Volume Profile rechnet immer auf 1m-Bars**, egal welchen Timeframe der Chart zeigt.
   Wer stattdessen die angezeigten Bars profiliert, bekommt auf dem 4h-Chart einen anderen
   POC als auf dem 5m-Chart.
@@ -199,6 +214,8 @@ electron/
   main.js           Fenster, titleBarOverlay
 shared/
   indicators/       von Chart und Engine gemeinsam genutzt: index.js, volumeProfile.js
+  strategies/       backtestbare Regeln: Registry, Risiko/Sizing, silverBullet.js
+  analysis/         Kennzahlen eines fertigen Laufs (Equity ab 0, Serien, Aufschlüsselung)
 strategies/       Beispielstrategien (sma-cross.js)
 src/
   components/       ChartPanel, DataManager, IndicatorPanel, DrawingToolbar
@@ -206,6 +223,7 @@ src/
   components/chart/ fvgPrimitive.js, sessionPrimitive.js, huntPrimitive.js, setupPrimitive.js
   components/chart/drawings/  Geometrie, Modell, Rendering und Maussteuerung
   components/       LineStyleBar, PositionStyleBar — Stilleisten über dem Chart
+  components/       BacktestPanel, ResultsPage — Läufe starten und vergleichen
   stores/session.js Symbol, Timeframe, Bibliothek, aktive Indikatoren
   styles/           Katsumii „Living Data" — tokens.css, base.css, fonts.css
 scripts/            Werkzeuge: Smoke-Test, Backtest-Runner, Versions-Sync

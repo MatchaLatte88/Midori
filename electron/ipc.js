@@ -13,6 +13,11 @@ import {
 } from './data/store/barStore.js';
 import { computeVolumeProfile } from '../shared/indicators/volumeProfile.js';
 import { loadDrawings, saveDrawings } from './data/store/drawingStore.js';
+import {
+  annotateRun, deleteRun, listRuns, loadRun, saveRun,
+} from './data/store/runStore.js';
+import { runBacktest } from './engine/backtest.js';
+import { STRATEGIES, buildStrategy, strategyCatalog } from '../shared/strategies/index.js';
 import { applyTitleBarTheme } from './titlebar.js';
 
 /** Datasets live outside the app bundle so an update never touches them. */
@@ -23,6 +28,11 @@ export function dataDir() {
 /** Separate from the candles: redownloading data must not erase annotations. */
 export function drawingsDir() {
   return path.join(app.getPath('userData'), 'drawings');
+}
+
+/** Results outlive the data they were computed from, so they live apart too. */
+export function runsDir() {
+  return path.join(app.getPath('userData'), 'backtests');
 }
 
 function requireString(value, name) {
@@ -86,6 +96,81 @@ export function registerIpc() {
 
   ipcMain.handle('drawings:save', (_e, { symbol, drawings }) => (
     saveDrawings(drawingsDir(), requireString(symbol, 'symbol'), drawings)
+  ));
+
+  /* ─── Backtesting ───────────────────────────────────────────────────── */
+
+  ipcMain.handle('backtest:strategies', () => strategyCatalog());
+
+  /* The run happens here rather than in the renderer for the same reason the
+   * volume profile does: the bars are already in this process, and a year of
+   * minutes has no business crossing the bridge twice. Only the finished
+   * summary goes back. */
+  ipcMain.handle('backtest:run', async (_e, request) => {
+    const {
+      strategy: strategyId, params = {}, symbol, timeframe, from, to,
+      balance = 10_000, costs = {}, note = '',
+    } = request ?? {};
+
+    requireString(strategyId, 'strategy');
+    if (!STRATEGIES[strategyId]) {
+      throw new Error(`Unknown strategy "${strategyId}". `
+        + `Known: ${Object.keys(STRATEGIES).join(', ')}`);
+    }
+    requireString(symbol, 'symbol');
+    requireTimeframe(timeframe);
+    if (!Number.isFinite(from) || !Number.isFinite(to)) {
+      throw new Error('from and to must be timestamps in milliseconds');
+    }
+    if (to <= from) throw new Error('The backtest range must end after it starts');
+    if (!Number.isFinite(balance) || balance <= 0) {
+      throw new Error('The starting balance must be a positive number');
+    }
+
+    /* Closed bars only. The engine must never see the bar currently forming —
+     * see ARCHITECTURE section 4; this is the flag that enforces it. */
+    const bars = await readBars(dataDir(), symbol, timeframe, from, to, true);
+    if (bars.length === 0) {
+      throw new Error('No bars in that range — download the data for this symbol first');
+    }
+
+    /* Minute bars underneath, so a bar that touches both stop and target is
+     * resolved by replaying it rather than guessed at. Reaching a day past the
+     * end lets a trade still open at the boundary finish honestly. */
+    const baseBars = timeframe === BASE_TIMEFRAME
+      ? null
+      : await readBars(dataDir(), symbol, BASE_TIMEFRAME, from, to + 86_400_000, true);
+
+    const built = buildStrategy(strategyId, params);
+    const result = runBacktest({ bars, baseBars, strategy: built, broker: { balance, costs } });
+
+    /* `result` already carries the resolved costs and the starting balance, so
+     * they are not repeated here — spreading it first and then overwriting
+     * them with the request's own values would put back the `{}` the caller
+     * sent. */
+    return saveRun(runsDir(), {
+      ...result,
+      strategy: strategyId,
+      strategyName: STRATEGIES[strategyId].name,
+      // The resolved params, not the ones sent: a stored run has to say what
+      // it actually ran with, including every default that was filled in.
+      params: built.params,
+      symbol,
+      timeframe,
+      from,
+      to,
+      note: typeof note === 'string' ? note.slice(0, 2000) : '',
+    });
+  });
+
+  ipcMain.handle('backtest:list', () => listRuns(runsDir()));
+
+  ipcMain.handle('backtest:load', (_e, id) => loadRun(runsDir(), requireString(id, 'id')));
+
+  ipcMain.handle('backtest:delete', (_e, id) => deleteRun(runsDir(), requireString(id, 'id')));
+
+  ipcMain.handle('backtest:annotate', (_e, { id, note }) => (
+    annotateRun(runsDir(), requireString(id, 'id'), note)
   ));
 
   ipcMain.handle('data:download', async (event, { symbol, from, to }) => {

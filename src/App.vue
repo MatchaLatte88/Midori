@@ -3,12 +3,25 @@ import { onMounted, ref } from 'vue';
 import ChartPanel from './components/ChartPanel.vue';
 import DataManager from './components/DataManager.vue';
 import IndicatorPanel from './components/IndicatorPanel.vue';
+import BacktestPanel from './components/BacktestPanel.vue';
+import ResultsPage from './components/ResultsPage.vue';
 import ChangelogModal from './components/ChangelogModal.vue';
 import HintTooltip from './components/HintTooltip.vue';
 import { APP_VERSION } from './generated/version.js';
 import {
-  initTheme, refreshDatasets, session, setError, setThemeMode, setTimeframe,
+  clearError, initTheme, refreshDatasets, session, setError, setThemeMode, setTimeframe,
+  setView,
 } from './stores/session.js';
+
+/* The chart's own controls only mean something on the chart. Symbol and
+ * timeframe are shared with a run, so they stay visible everywhere — a
+ * backtest reads them, and hiding them would make it unclear what a run is
+ * about to test. */
+const NAV = [
+  { id: 'chart', label: 'Chart' },
+  { id: 'backtest', label: 'Backtest' },
+  { id: 'results', label: 'Results' },
+];
 
 const TIMEFRAMES = ['1m', '5m', '15m', '30m', '1h', '4h', '1d'];
 
@@ -43,6 +56,16 @@ onMounted(async () => {
       <span class="brand-name">Midori</span>
       <span class="brand-version">{{ APP_VERSION }}</span>
     </button>
+
+    <nav class="nav">
+      <button
+        v-for="item in NAV"
+        :key="item.id"
+        class="nav-btn"
+        :class="{ 'is-active': session.view === item.id }"
+        @click="setView(item.id)"
+      >{{ item.label }}</button>
+    </nav>
 
     <div class="k-divider"></div>
 
@@ -86,10 +109,30 @@ onMounted(async () => {
   <ChangelogModal :open="changelogOpen" @close="changelogOpen = false" />
 
   <main class="workspace">
-    <DataManager />
-    <ChartPanel :symbol="session.symbol" :timeframe="session.timeframe" />
-    <IndicatorPanel />
+    <!-- v-if, so a view that is not showing holds no chart instance and no
+         listeners. The cost is that the chart rebuilds and refetches its bars
+         on the way back; the alternative, v-show, keeps it alive but hands
+         lightweight-charts a zero-sized container while hidden, which it does
+         not survive without a resize on every return. Worth revisiting if the
+         rebuild ever becomes noticeable. -->
+    <template v-if="session.view === 'chart'">
+      <DataManager />
+      <ChartPanel :symbol="session.symbol" :timeframe="session.timeframe" />
+      <IndicatorPanel />
+    </template>
+
+    <BacktestPanel v-else-if="session.view === 'backtest'" />
+    <ResultsPage v-else />
   </main>
+
+  <!-- One place for every error in the app. It used to be rendered inside the
+       DataManager, which only exists on the chart view — so anything that went
+       wrong on the backtest or results pages was caught, stored, and shown to
+       nobody. An error nobody can see is worse than one that crashes. -->
+  <div v-if="session.error" class="error-toast k-panel" role="alert">
+    <span class="error-text">{{ session.error }}</span>
+    <button class="error-close" title="Dismiss" @click="clearError">×</button>
+  </div>
 </template>
 
 <style scoped>
@@ -165,6 +208,26 @@ onMounted(async () => {
   font-size: 13px;
 }
 .tf-group { display: flex; gap: 3px; }
+
+/* Top-level navigation. Underlined rather than boxed: these are places, not
+   settings, and the segmented look is already spoken for by the theme switch
+   at the other end of the bar. */
+.nav { display: flex; gap: 2px; -webkit-app-region: no-drag; }
+.nav-btn {
+  padding: 5px 9px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: none;
+  color: var(--sec);
+  font-family: 'Plus Jakarta Sans', Inter, sans-serif;
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.nav-btn:hover { color: var(--txt); background: var(--glass); }
+.nav-btn.is-active { color: var(--accent); border-bottom-color: var(--accent); }
 .spacer { flex: 1; }
 
 /* Segmented control: three states, so "follow the system" stays a choice
@@ -193,6 +256,41 @@ onMounted(async () => {
 .theme-btn:hover { color: var(--txt); }
 .theme-btn.is-active { color: var(--accent); background: var(--accent-bg); }
 .theme-btn svg { width: 14px; height: 14px; }
+
+/* Sits above everything and stays put while the view under it scrolls: an
+   error that scrolled out of sight would be the same bug again. */
+.error-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(720px, calc(100vw - 32px));
+  padding: 9px 12px;
+  border-color: var(--neg);
+}
+.error-text {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 11.5px;
+  color: var(--neg);
+  overflow-wrap: anywhere;
+}
+.error-close {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  color: var(--sec);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.error-close:hover { color: var(--txt); background: var(--glass); }
 
 .workspace {
   position: relative;

@@ -367,7 +367,10 @@ class DrawingRenderer {
 }
 
 /** Prices span BTC at 100k and altcoins at 0.00001 — pick decimals to match. */
-function formatPrice(p) {
+/* Exported so an executed trade is labelled with the same precision as a
+ * planned one — two blocks side by side that rounded differently would look
+ * like two different prices. */
+export function formatPrice(p) {
   const abs = Math.abs(p);
   const decimals = abs >= 1000 ? 2 : abs >= 1 ? 4 : 8;
   return p.toLocaleString('en-GB', {

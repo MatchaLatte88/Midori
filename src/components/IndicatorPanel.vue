@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue';
+import ConfirmModal from './ConfirmModal.vue';
 import { INDICATORS, indicatorCatalog } from '../../shared/indicators/index.js';
 import { VOLUME_PROFILE_PARAMS } from '../../shared/indicators/volumeProfile.js';
 // Zone colours live with the fair-value-gap schema, which defined them first;
@@ -15,6 +16,10 @@ import {
 
 const catalog = indicatorCatalog();
 const picking = ref(false);
+
+/* What is waiting on a confirmation: an indicator, a custom session row, or
+ * nothing. One slot rather than one per kind — only one prompt can be open. */
+const pending = ref(null);
 
 const vp = computed(() => session.volumeProfile);
 const vpStats = computed(() => session.volumeProfile.stats);
@@ -37,6 +42,35 @@ function swatchFor(ind) {
 function add(spec) {
   addIndicator(spec);
   picking.value = false;
+}
+
+function askRemoveIndicator(ind) {
+  pending.value = {
+    kind: 'indicator',
+    title: 'Remove this indicator?',
+    message: `${INDICATORS[ind.id].name} comes off the chart, along with the settings `
+      + 'you gave it. Adding it back starts from the defaults.',
+    confirmLabel: 'Remove',
+    run: () => removeIndicator(ind.uid),
+  };
+}
+
+function askRemoveSession(ind, key, i) {
+  const name = ind.params[key][i]?.name?.trim();
+  pending.value = {
+    kind: 'session',
+    title: 'Remove this session?',
+    message: `${name || 'This session'} is removed from the list, with its time zone `
+      + 'and hours. This cannot be undone.',
+    confirmLabel: 'Remove',
+    run: () => removeSession(ind, key, i),
+  };
+}
+
+function confirmPending() {
+  const action = pending.value;
+  pending.value = null;
+  action?.run();
 }
 
 /* Adds or removes one value of a multi-select parameter, writing a whole new
@@ -278,7 +312,7 @@ function fmtCount(n) {
         <button
           v-hint="'Take this indicator off the chart'"
           class="icon-btn"
-          @click="removeIndicator(ind.uid)"
+          @click="askRemoveIndicator(ind)"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
             <path d="M6 6l12 12M18 6L6 18" />
@@ -307,7 +341,7 @@ function fmtCount(n) {
               <button
                 v-hint="'Remove this session'"
                 class="icon-btn icon-btn--tiny"
-                @click="removeSession(ind, p.key, i)"
+                @click="askRemoveSession(ind, p.key, i)"
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
                   <path d="M6 6l12 12M18 6L6 18" />
@@ -395,6 +429,15 @@ function fmtCount(n) {
         </label>
       </div>
     </div>
+
+    <ConfirmModal
+      :open="pending !== null"
+      :title="pending?.title ?? ''"
+      :message="pending?.message ?? ''"
+      :confirm-label="pending?.confirmLabel ?? 'Remove'"
+      @confirm="confirmPending"
+      @cancel="pending = null"
+    />
   </aside>
 </template>
 

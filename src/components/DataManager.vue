@@ -110,7 +110,8 @@ function deltaLabel(d) {
       </template>
     </p>
 
-    <p v-if="session.error" class="k-note error">{{ session.error }}</p>
+    <!-- Errors are shown once, app-wide, by App.vue: this panel only exists on
+         the chart view, so an error raised anywhere else had nowhere to go. -->
 
     <div class="k-eyebrow library-head">Local library</div>
     <p v-if="!session.datasets.length" class="k-mono-meta">Nothing downloaded yet.</p>

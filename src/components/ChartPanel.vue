@@ -12,6 +12,7 @@ import { HuntPrimitive } from './chart/huntPrimitive.js';
 import { SetupPrimitive } from './chart/setupPrimitive.js';
 import { DrawingPrimitive } from './chart/drawings/drawingPrimitive.js';
 import { useDrawings } from './chart/drawings/useDrawings.js';
+import ConfirmModal from './ConfirmModal.vue';
 import DrawingToolbar from './DrawingToolbar.vue';
 import PositionStyleBar from './PositionStyleBar.vue';
 import LineStyleBar from './LineStyleBar.vue';
@@ -68,6 +69,13 @@ const draw = useDrawings({
 
 const overlayEl = ref(null);
 const hasSelection = computed(() => draw.selectedId.value !== null);
+
+/* Which destructive action is waiting on an answer: 'one', 'all', or null.
+ * A string rather than two booleans, because the two prompts can never be
+ * open at once and two flags could disagree about that. */
+const pendingDelete = ref(null);
+
+const drawingCount = computed(() => draw.drawings.value.length);
 
 /* The style bar only makes sense while a position block is selected — for a
  * trend line there is nothing on it to set. */
@@ -642,13 +650,26 @@ function onPositionStyle(patch) {
   syncDrawings();
 }
 
+/* The buttons ask; the Delete key does not. Pressing Delete means selecting a
+ * drawing and reaching for a specific key, which is already deliberate — and a
+ * prompt on every press would make tidying up a chart painful. A button is
+ * clickable by accident, and "clear" takes every drawing on the symbol with
+ * it, so those are the ones worth interrupting. */
 function onToolbarDelete() {
-  draw.deleteSelected();
-  syncDrawings();
+  if (!hasSelection.value) return;
+  pendingDelete.value = 'one';
 }
 
 function onToolbarClear() {
-  draw.clearAll();
+  if (drawingCount.value === 0) return;
+  pendingDelete.value = 'all';
+}
+
+function confirmDelete() {
+  const what = pendingDelete.value;
+  pendingDelete.value = null;
+  if (what === 'one') draw.deleteSelected();
+  else if (what === 'all') draw.clearAll();
   syncDrawings();
 }
 
@@ -814,6 +835,18 @@ defineExpose({ reload: loadInitial });
         :width="selectedLine.width"
         :line-style="selectedLine.lineStyle"
         @update="onLineStyle"
+      />
+
+      <ConfirmModal
+        :open="pendingDelete !== null"
+        :title="pendingDelete === 'all' ? 'Remove every drawing?' : 'Delete this drawing?'"
+        :message="pendingDelete === 'all'
+          ? `All ${drawingCount} drawing${drawingCount === 1 ? '' : 's'} on `
+            + `${session.symbol ?? 'this symbol'} will be removed. This cannot be undone.`
+          : 'The selected drawing will be removed. This cannot be undone.'"
+        :confirm-label="pendingDelete === 'all' ? 'Remove all' : 'Delete'"
+        @confirm="confirmDelete"
+        @cancel="pendingDelete = null"
       />
 
       <div v-if="status" class="chart-status k-mono-label">{{ status }}</div>

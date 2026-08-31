@@ -185,6 +185,12 @@ export class Broker {
     }
 
     const entry = this.placeOrder({ side, size, type: 'market', tag });
+    /* Remembered on the entry order so the closed trade can carry them. The
+     * protective orders themselves are gone by then — one filled, the other was
+     * cancelled — and a review that wants to draw the bracket would otherwise
+     * have to reconstruct it from an order log nothing stores. */
+    entry.stopLoss = stopLoss ?? null;
+    entry.takeProfit = takeProfit ?? null;
     const exitSide = side === SIDE.BUY ? SIDE.SELL : SIDE.BUY;
 
     if (stopLoss != null) {
@@ -350,6 +356,11 @@ export class Broker {
       fee,
       tag: order.tag,
       resolution,
+      /* Carried from the entry order, where submitEntry recorded them, so the
+       * position and then the closed trade can keep the bracket. Null on every
+       * fill that is not an entry, which is what a stop or target fill is. */
+      stopLoss: order.stopLoss ?? null,
+      takeProfit: order.takeProfit ?? null,
     };
     this.fills.push(fill);
 
@@ -388,6 +399,13 @@ export class Broker {
         openedAt: fill.time,
         fees: fill.fee,
         entryFills: [fill],
+        stopLoss: fill.stopLoss ?? null,
+        takeProfit: fill.takeProfit ?? null,
+        /* What the entry order was tagged with, carried to the closed trade.
+         * Without it a finished trade only says how it ended — stop or target —
+         * and never why it was taken, so a run cannot be broken down by
+         * whatever the strategy grouped its entries under. */
+        entryTag: fill.tag ?? null,
       };
       return;
     }
@@ -425,6 +443,9 @@ export class Broker {
       pnl,
       fees: pos.fees,
       netPnl: pnl - pos.fees,
+      entryTag: pos.entryTag ?? null,
+      stopLoss: pos.stopLoss ?? null,
+      takeProfit: pos.takeProfit ?? null,
       exitTag: fill.tag,
     });
 
@@ -441,6 +462,9 @@ export class Broker {
         openedAt: fill.time,
         fees: 0,
         entryFills: [fill],
+        stopLoss: fill.stopLoss ?? null,
+        takeProfit: fill.takeProfit ?? null,
+        entryTag: fill.tag ?? null,
       };
     } else {
       pos.size = remaining;

@@ -194,6 +194,9 @@ Serie an, sondern schiebt sie in ein Pane-Primitive.
 Vorhanden: SMA, EMA, Bollinger Bands, RSI, ATR, VWAP (täglich/wöchentlich verankert),
 Fair Value Gaps, Inverted Fair Value Gaps, Handelssessions, Stop Hunts und Silver Bullet.
 
+Silver Bullet ist zusätzlich als **Strategie** registriert und damit backtestbar — siehe
+Abschnitt 8b. Der Detektor bleibt derselbe; nur die Verwendung ist eine zweite.
+
 ### Bar-Zeiten sind Millisekunden
 
 Der Chart hält Bars in **Sekunden**, weil die Series-API das so will. Jeder Indikator, der
@@ -751,6 +754,194 @@ und kein Widerspruch: Der Unterschied entsteht genau dort, wo es eng wird.
 - **Kennzahlen ohne Trades sind `null`, nicht 0.** Eine Trefferquote von 0 % würde „immer
   verloren" heißen; ein Profit-Faktor von `Infinity` wäre eine erfundene Zahl.
 
+## 8b. Strategien und Backtests
+
+### Wo die Grenze zum Indikator liegt
+
+Nicht bei der Komplexität. Ein **Indikator beschreibt** den Markt, eine **Strategie legt sich
+fest**. In dem Moment, in dem etwas sagt „hier kaufen, so viel riskieren, dort raus", ist es
+keine Zeichnung mehr, sondern etwas, das über Geld recht oder unrecht haben kann — und genau
+das gehört nach `shared/strategies/`, weil genau das backtestbar ist.
+
+Eine Strategie darf einen Indikator **benutzen**, und Silver Bullet tut das: Der Detektor
+bleibt in `shared/indicators/`, zeichnet weiter im Chart, und die Strategie meldet ihn als
+Ereignisquelle an. Eine Definition, zwei Verwendungen. Würde die Strategie die Erkennung
+nachbauen, wären Chart und Backtest irgendwann verschiedener Meinung über denselben Markt —
+der Fehler, gegen den `shared/` überhaupt existiert.
+
+### Serien und Ereignisse
+
+Die Engine kannte bisher nur Serien: ein Wert je Bar, deklariert unter `indicators`, gelesen
+über `ctx.ind(name, back)`. Ein Setup ist aber kein Wert je Bar, sondern ein paar Dutzend
+Objekte über eine ganze Serie. Solche Indikatoren werden unter `events` deklariert und über
+`ctx.events(name)` gelesen — was **auf dieser Bar** bekannt wurde, und nichts sonst.
+
+Gebucketet wird nach `index`, **niemals** nach `startIndex`. Das ist der ganze Grund, warum es
+beide gibt: `startIndex` sagt, wo etwas gezeichnet wird, `index` sagt, ab wann man danach
+handeln konnte. Der Zeichen-Index hier gäbe einer Strategie ein Setup, bevor der Markt es
+fertig gemacht hat — exakt die Lüge, gegen die die Trennung erfunden wurde.
+
+Ereignisse nehmen am Warm-up-Sprung nicht teil. Eine Serie ist undefiniert, bis ihr Fenster
+voll ist, und das ist ein Grund zu warten; eine Bar ohne Ereignisse wärmt sich nicht auf, auf
+ihr ist nur nichts passiert.
+
+### Risiko gehört der Schicht, nicht der Strategie
+
+Jede Strategie bekommt dieselben Fragen, also werden sie einmal gestellt — in `RISK_PARAMS` —
+und überall gleich beantwortet: Wie viel steht auf einem Trade, wie weit liegt das Ziel
+relativ dazu, und wie viel Notional darf die Position tragen. Eine Strategie mit eigenen Namen
+dafür machte zwei Läufe unvergleichbar, und Vergleichen ist der Grund, warum Läufe gespeichert
+werden.
+
+**Die Positionsgröße wird abgeleitet, nie gesetzt.** Man wählt das Risiko; der Abstand zum
+Stop bestimmt die Größe. Ein weiterer Stop kauft also eine kleinere Position statt eines
+größeren Verlusts.
+
+### Die Hebelgrenze ist keine Formalität
+
+Risikobasierte Größenrechnung teilt durch den Stopabstand, ein enger Stop verlangt also eine
+große Position. BTC bei 58.700, Stop 45 entfernt, 1 % von 10.000 riskiert: rechnerisch 2,2 BTC
+— **130.000 Notional gegen 10.000 Eigenkapital**. Das kann auf Spot niemand halten, und die
+Gebühren auf die Phantomgröße kosten bei 0,1 % je Seite mehr, als der Trade je verlieren
+durfte.
+
+Gemessen auf einem Monat BTC-5m machte ungedeckelte Größenrechnung aus 54 Silver-Bullet-Trades
+**4.924 an Gebühren** gegen ein 10.000er Konto. Mit `maxLeverage` (Standard 1, also Spot)
+fallen dieselben Gebühren auf 995. Der Broker selbst prüft keine Margin — er füllt jede Größe,
+die eine Strategie verlangt —, also sitzt der Deckel in `positionSize`.
+
+Deckeln senkt das tatsächliche Risiko unter das gewünschte: Der Stop liegt weiter dort, aber
+eine kleinere Position verliert dort weniger. Das ist die ehrliche Richtung, in der man falsch
+liegt, und sie ist sichtbar — ein Lauf, dessen Größen an der Decke kleben, sagt einem, dass
+der Stop für dieses Risiko zu eng ist.
+
+### Warum die Fills schlechter sind als die Indikator-Ausgänge
+
+Der Detektor meldet den Entry auf der Bar, auf der der Preis die Lückenkante **berührt hat** —
+rückblickend. Eine Order weiß das nicht. Wenn diese Bar geschlossen ist und die Strategie
+gefragt wird, ist der Preis vorbei.
+
+Also schickt die Strategie eine Market-Order auf der Signalbar, und die Engine — die eine
+Order nie auf der Bar füllen lässt, die sie erzeugt hat — füllt gegen die nächste, plus
+Spread, Slippage und Gebühr. Die `outcome`-Felder des Indikators und das Backtest-Ergebnis
+werden deshalb **nicht** übereinstimmen. Diese Lücke ist kein Defekt, sondern der Preis dafür,
+dass das Setup erst hinterher erkennbar ist.
+
+Eine ruhende Limit-Order an der Kante füllte näher und ist das realistischere Modell. Sie ist
+nicht gebaut, weil der Detektor nur Setups meldet, die auch einen Entry bekamen: Ihn auf der
+MSS-Bar zu fragen, reichte der Strategie eine vorgefilterte Liste derer, zu denen der Preis
+zurückkam — Rückschau im Kostüm einer Limit-Order. Das sauber zu lösen heißt, den Indikator
+scharfgestellte Setups melden zu lassen, bevor er ihr Schicksal kennt.
+
+### Läufe auf der Platte
+
+`electron/data/store/runStore.js`: ein Index plus eine Datei je Lauf, unter
+`userData/backtests/`.
+
+Was das entscheidet, ist nicht die Zahl der Läufe, sondern die Größe eines einzelnen. Die
+Equity-Kurve der Engine trägt **einen Punkt je Bar** — über ein Jahr 5m sind das 105.000
+Punkte, mehrere MB je Lauf, in *jedem* Speicherformat. Die Lösung ist deshalb nicht der
+Behälter, sondern das Verdichten der Kurve vor dem Schreiben: Zwischen zwei Trades bewegt sich
+die realisierte Bilanz nicht. Aus 8.928 Punkten werden 101, ein Lauf wiegt 25 KB.
+
+Damit wäre SQLite eine native Abhängigkeit, die gegen jede Electron-Version neu kompiliert
+werden müsste, ohne dafür ein Problem zu lösen — ein paar hundert Objekte im Speicher
+beantworten jede Frage schneller als der Roundtrip. Alles läuft durch vier Funktionen, falls
+diese Einschätzung kippt.
+
+**Ein Lauf speichert, womit er lief.** Ein Ergebnis ohne seine Einstellungen ist kein
+Ergebnis: Zwei Läufe derselben Strategie, die sich in einer Zahl unterscheiden, sind der ganze
+Grund fürs Speichern, und eine Seite, die den Ausgang zeigt aber nicht die Eingaben, macht
+genau diesen Vergleich unmöglich. Gespeichert werden die **aufgelösten** Parameter — inklusive
+jedes eingesetzten Standardwerts —, Symbol, Timeframe, Zeitraum, Startkapital, die
+Fill-Auflösung und die Kosten.
+
+Die Kosten meldet die **Engine**, nicht der Aufrufer. Wer nichts übergibt, bekommt die
+Voreinstellungen des Brokers; ein Lauf, der die leere Überschreibung gespeichert hätte, würde
+behaupten, kostenlos gewesen zu sein — und sähe vergleichbar aus mit einem Lauf von nach einer
+Änderung dieser Voreinstellungen. Auf einem Monat BTC-5m waren es 995 an Gebühren gegen ein
+10.000er Konto, also nichts, worüber ein gespeicherter Lauf schweigen darf.
+
+Angezeigt werden sie über `shared/analysis/runSettings.js`, das die Werte durch das
+Parameterschema der Strategie zurückliest: `riskMode: 'percent'` wird zu „Percent of equity".
+Damit bekommt eine Strategie, die eine Einstellung dazubekommt, deren Anzeige geschenkt. Fehlt
+das Schema — die Strategie wurde umbenannt, entfernt, oder ein Parameter fiel zwischen zwei
+Versionen weg —, fällt jede Zeile auf den rohen Schlüssel zurück, statt zu verschwinden: Ein
+Lauf, der `minGapSize: 50` unter einem unbekannten Namen zeigt, sagt weiter die Wahrheit, eine
+leere Zeile nicht.
+
+**Der Index ist abgeleitet, nie maßgeblich.** Fehlt er oder ist er unlesbar, wird er aus den
+Dateien neu gebaut, statt eine leere Bibliothek über einem vollen Ordner zu zeigen. Deshalb
+geht beim Löschen die Datei mit — ein zurückgelassener Lauf stünde beim nächsten Neuaufbau
+wieder da.
+
+Weggelassen werden Order- und Fill-Protokolle: ein Vielfaches der Trades, dieselben Ereignisse
+feiner beschrieben, und nichts in der Oberfläche liest sie. Die Eingaben sind gespeichert, ein
+Lauf ist also wiederholbar.
+
+### Trades durchsehen
+
+Sitzt im Ergebnis-Reiter als zweite Ansicht eines einzelnen Laufs, umschaltbar neben der
+analytischen. Zwei Arten, dieselbe Frage zu stellen — was hat dieser Lauf getan —, und beide
+wollen die ganze Fläche, also lösen sie einander ab statt sie zu teilen. Beim Vergleich mehrerer
+Läufe gibt es die Ansicht nicht: Zwei ineinander verschachtelte Trade-Listen wären zwei
+Strategien im Wechsel und beantworten nichts.
+
+Eine Zusammenfassung sagt, dass eine Strategie verloren hat; sie sagt nie, warum. Zwanzig Bars
+um einen Entry sagen es — und das von Hand zu tun, ein Jahr Chart zu einem aus einer Tabelle
+kopierten Zeitstempel zu scrollen, ist genug Arbeit, dass es niemand tut. Also geht der Chart
+zum Trade statt umgekehrt.
+
+Geladen wird **nur das Fenster um den aktuellen Trade**, nicht der ganze Lauf: 60 Bars Vorlauf,
+25 Nachlauf. Ein Jahr 5m sind 105.000 Bars, ein Trade braucht knapp neunzig, und für den Rest
+auf dem Weg zum ersten zu bezahlen ließe den Knopf kaputt wirken. Wie viel Chart das ist, kommt
+aus `stepMs`, das die Engine meldet und der Lauf speichert — die Alternative, eine
+Timeframe-zu-Millisekunden-Tabelle in den Renderer zu kopieren, ist genau die Art Duplikat, die
+auseinanderdriftet. Läufe von vor dieser Ergänzung haben keins und fallen auf eine Stunde
+zurück: auf 1m zu viel Chart, auf 1d zu wenig, aber nie nichts.
+
+**Gezeichnet wird der Trade als Positionsblock** — dieselbe Formensprache wie das
+Setup-Primitive und das Positionswerkzeug: Risikozone vom Einstieg zum Stop, Gewinnzone zum
+Ziel, Einstiegslinie gestrichelt dazwischen. Ein vom Indikator gefundenes Setup, ein von Hand
+geplanter Trade und ein von der Engine tatsächlich ausgeführter sollen nicht drei
+Bildsprachen brauchen. Was den ausgeführten unterscheidet, ist der **Ausgang**: Die Bar, die
+ihn geschlossen hat, trägt eine Marke in der Farbe dessen, was passiert ist.
+
+**Beschriftet wird er wie das Positionswerkzeug**, an denselben Stellen und aus denselben
+`positionStats`: TP und SL zur Mitte ihrer eigenen Zone hin, der Einstieg auf der Gewinnseite,
+Richtung und Chance-Risiko-Verhältnis an der Einstiegslinie in der Risikozone. Dazu das eine,
+was nur ein ausgeführter Trade hat — das **realisierte Ergebnis** teilt sich die Zeile mit dem
+R:R, denn genau darin unterscheidet er sich von einem geplanten. `formatPrice` ist dafür aus
+`drawingPrimitive.js` exportiert: Zwei Blöcke nebeneinander, die unterschiedlich runden, sähen
+aus wie zwei verschiedene Preise.
+
+Ohne beide Schenkel gibt es kein Verhältnis. `positionStats` liest einen fehlenden als Null —
+`Math.abs(entry - null)` ist der Einstiegspreis —, was jedem Lauf von vor der Klammer ein
+erfundenes, selbstbewusstes R:R verpasst hätte. Das Primitive prüft deshalb auf beide, bevor es
+rechnet, und schreibt sonst einen Geviertstrich.
+
+Dafür muss der Trade seine Klammer kennen. Stop und Ziel lagen bisher nur in den Orders, und
+die werden nicht gespeichert — `submitEntry` merkt sie deshalb an der Einstiegsorder, der Fill
+reicht sie an die Position weiter, und die abgeschlossene Position schreibt sie in den Trade.
+Läufe von vor dieser Ergänzung haben sie nicht und zeigen nur Ein- und Ausstieg.
+
+**Fills lassen sich nicht über Zeitstempel platzieren.** Bei Intrabar-Auflösung passiert ein
+Fill auf einer Minute *innerhalb* der Bar, seine Zeit ist also keine Bar-Zeit, und der Chart
+hat nichts zum Anknüpfen — `timeToCoordinate` gäbe null zurück. `barIndexAt` sucht deshalb die
+Bar, die den Fill enthält, und das Primitive rechnet wie alle anderen in logischen Indizes.
+Festgehalten in `test/tradePrimitive.test.js`.
+
+Beim Wechsel wird neu geladen statt zwischengespeichert. Jedes Fenster ist ein kleiner
+IPC-Aufruf; ein Cache über alle Trades hielte den ganzen Lauf ein zweites Mal im Speicher, für
+eine Ersparnis, die niemand bemerkt. Ein Zähler verwirft eine Antwort, die eintrifft, nachdem
+weitergeblättert wurde.
+
+### Der Lauf passiert im Hauptprozess
+
+Aus demselben Grund wie das Volume Profile: Die Bars liegen schon dort. Ein Jahr Minuten über
+die Brücke zu schicken, dort zu rechnen und zurückzuschicken, bewegte zig Megabyte für nichts.
+Über die Brücke geht nur die fertige Zusammenfassung.
+
 ## 9. Bot-API (geplant, Abschnitt 11 M3)
 
 Strategien sind JavaScript-Module, kein DSL:
@@ -791,6 +982,30 @@ damit ein Theme-Wechsel keine zweite Farbliste pflegen muss.
 
 Klassen `k-panel`, `k-eyebrow`, `k-mono-label`, `k-chip`, `k-note`, `.btn`, `.primary-btn`,
 `.icon-btn` — vor jeder neuen Klasse prüfen, ob eine davon passt.
+
+### Bestätigung vor dem Löschen
+
+Jede Aktion, die etwas unwiederbringlich entfernt, geht durch `ConfirmModal` — eine Komponente
+für alle, damit Zerstörerisches überall gleich aussieht und sich gleich verhält. Fünf Stellen:
+ein gespeicherter Lauf, eine ausgewählte Zeichnung, alle Zeichnungen eines Symbols, ein
+Indikator, eine eigene Session.
+
+Das Modal entscheidet nicht, was zerstörerisch ist, und löscht auch nichts selbst — es meldet
+`confirm`, der Aufrufer führt aus. Eines, das selbst löschte, müsste jeden Store der App
+kennen. Der Aufrufer hält deshalb auch, *was* gerade zur Bestätigung ansteht, denn nur er kann
+es benennen: „Silver Bullet auf BTCUSDT 5m, 54 Trades" ist eine Warnung, „Sind Sie sicher?"
+nicht.
+
+Der Bestätigungsknopf bekommt beim Öffnen den Fokus. Das klingt verkehrt für eine gefährliche
+Aktion, ist es aber nicht: Escape und ein Klick auf den Hintergrund brechen ab, die Fluchtwege
+sind also die bequemen, und der Tastaturweg ist Enter statt Tab-dann-Enter. Der Knopf trägt
+`.btn--danger` — im Projekt seit jeher definiert, bis jetzt ungenutzt —, also liest sich das
+Fokussierte als Warnung.
+
+**Die Entf-Taste fragt nicht.** Eine Zeichnung auszuwählen und eine bestimmte Taste zu drücken
+ist bereits absichtsvoll; ein Modal bei jedem Druck machte das Aufräumen eines Charts zur
+Qual. Ein Knopf lässt sich versehentlich treffen, und „alle entfernen" nimmt jede Zeichnung des
+Symbols mit — das sind die Fälle, die eine Unterbrechung wert sind.
 
 ### Hover-Hinweise
 

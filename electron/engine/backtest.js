@@ -13,15 +13,40 @@
  * last n closed bars — and `ctx.ind(name, back)` for indicator values, both of
  * which stop at the current bar. Look-ahead is not discouraged here, it is
  * unavailable.
+ *
+ * Series and events
+ * -----------------
+ * Most indicators are one value per bar and are declared under `indicators`.
+ * A few describe discrete things instead — a gap, a sweep, a whole setup — and
+ * produce a handful of objects across the entire series rather than a value at
+ * every bar. Those are declared under `events` and reach the strategy through
+ * `ctx.events(name)`, which returns what became knowable on *this* bar and
+ * nothing else.
+ *
+ * The bucketing is by each object's `index`, never its `startIndex`. That
+ * distinction is the whole reason the two exist: `startIndex` is where a thing
+ * is drawn, `index` is the bar from which it could have been acted on. Reading
+ * the drawing index here would hand a strategy a setup before the market had
+ * finished making it, which is exactly the lie the split was invented to stop.
+ *
+ * Events take no part in the warm-up skip. A series is undefined until its
+ * window fills, which is a real reason to wait; a bar with no events is not
+ * warming up, it is simply a bar where nothing happened.
  */
 import { computeIndicator } from '../../shared/indicators/index.js';
 import { Broker, SIDE } from './broker.js';
+
+/* One frozen array for every barless answer, rather than a fresh [] per call.
+ * A strategy that asks on every bar would otherwise allocate one per bar, and
+ * freezing it means a strategy that pushes into the result corrupts its own
+ * call rather than the next bar's. */
+const EMPTY = Object.freeze([]);
 
 /**
  * @param {object} params
  * @param {Array} params.bars        strategy-timeframe bars, ascending, closed only
  * @param {Array} [params.baseBars]  1m bars covering the same span, for intrabar fills
- * @param {object} params.strategy   { indicators?, params?, init?, onBar, onFinish? }
+ * @param {object} params.strategy   { indicators?, events?, params?, init?, onBar, onFinish? }
  * @param {object} [params.broker]   Broker options (balance, costs)
  */
 export function runBacktest({
@@ -53,6 +78,40 @@ export function runBacktest({
     }
     series[name] = result[key];
   }
+
+  /* Event indicators, bucketed by the bar that confirmed each object. Same
+   * precompute-once argument as the series above: the strategy can only reach
+   * bucket i while it is on bar i, so computing the whole thing up front costs
+   * nothing in correctness. */
+  const declaredEvents = strategy.events ?? {};
+  const buckets = {};
+  for (const [name, spec] of Object.entries(declaredEvents)) {
+    if (!spec || typeof spec.id !== 'string') {
+      throw new Error(`Strategy event "${name}" needs an { id, params } shape`);
+    }
+    const result = computeIndicator(spec.id, bars, spec.params ?? {});
+    const key = spec.output ?? Object.keys(result)[0];
+    if (!(key in result)) {
+      throw new Error(`Event "${name}" (${spec.id}) has no output "${key}"`);
+    }
+    const items = result[key];
+    if (!Array.isArray(items)) {
+      throw new Error(`Event "${name}" (${spec.id}) must produce an array, got ${typeof items}`);
+    }
+
+    const byBar = new Array(bars.length);
+    for (const item of items) {
+      const at = item?.index;
+      if (!Number.isInteger(at)) {
+        throw new Error(`Event "${name}" (${spec.id}) produced an item with no integer index`);
+      }
+      // Outside the run entirely - nothing on this pass can act on it.
+      if (at < 0 || at >= bars.length) continue;
+      (byBar[at] ??= []).push(item);
+    }
+    buckets[name] = byBar;
+  }
+  const eventNames = Object.keys(buckets);
 
   // Skip the warm-up: bars where a declared indicator is still undefined. A
   // strategy that had to null-check every value would be mostly null-checks.
@@ -101,6 +160,21 @@ export function runBacktest({
       }
       const at = i - back;
       return at < 0 ? null : s[at];
+    },
+
+    /**
+     * The events of `name` that this bar confirmed, oldest first, or an empty
+     * array. Never anything from a later bar: the bucket is keyed by the index
+     * at which each item became knowable.
+     */
+    events(name) {
+      const byBar = buckets[name];
+      if (!byBar) {
+        throw new Error(
+          `Unknown event "${name}". Declared: ${eventNames.join(', ') || 'none'}`,
+        );
+      }
+      return byBar[i] ?? EMPTY;
     },
 
     get position() { return broker.position; },
@@ -175,6 +249,16 @@ export function runBacktest({
     }),
     warmupBars: start,
     barCount: bars.length,
+    /* How long one bar is. Reported because a stored run is read back long
+     * after the fact by things that only have the trades — a trade review has
+     * to know how much chart a trade is worth without re-deriving it. */
+    stepMs: Number.isFinite(step) ? step : null,
+    /* The costs the run was actually charged, not the overrides it was handed.
+     * A caller that passes nothing gets the Broker's defaults, and a run that
+     * stored `{}` would claim to have been free — worse, it would look
+     * comparable to a run made after someone changed those defaults. */
+    costs: { ...broker.costs },
+    initialBalance: broker.initialBalance,
     resolution: baseBars && baseBars.length > 0 ? 'intrabar' : 'pessimistic',
     elapsedMs: Date.now() - startedAt,
   };

@@ -23,6 +23,17 @@ contextBridge.exposeInMainWorld('midori', {
     save: (symbol, drawings) => ipcRenderer.invoke('drawings:save', { symbol, drawings }),
   },
 
+  backtest: {
+    /** Strategy metadata and param schemas, for building the form. */
+    strategies: () => ipcRenderer.invoke('backtest:strategies'),
+    /** Runs a strategy and stores the result; resolves with the run summary. */
+    run: (request) => ipcRenderer.invoke('backtest:run', request),
+    list: () => ipcRenderer.invoke('backtest:list'),
+    load: (id) => ipcRenderer.invoke('backtest:load', id),
+    remove: (id) => ipcRenderer.invoke('backtest:delete', id),
+    annotate: (id, note) => ipcRenderer.invoke('backtest:annotate', { id, note }),
+  },
+
   ui: {
     /** Keeps the native title bar in step with the app's theme. */
     setTheme: (theme) => ipcRenderer.invoke('ui:set-theme', theme),
