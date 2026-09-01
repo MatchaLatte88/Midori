@@ -88,6 +88,15 @@ const state = reactive({
   balance: 10_000,
   costs: { ...DEFAULT_COSTS },
 
+  /* The size the chart's quick bar sends, in base units.
+   *
+   * Null until one is typed, and that is the point: a size carried over from a
+   * setup that is already over is the one mistake here that costs money, and a
+   * default would be exactly that with nobody having chosen it. It lives in the
+   * store rather than in the bar so that leaving the view and coming back does
+   * not silently empty a field that was about to be used. */
+  quickSize: null,
+
   /** Set by the ticket while a price is being picked off the chart. */
   picking: null,     // 'stopLoss' | 'takeProfit' | 'entryPrice' | null
   picked: null,      // { field, price } — consumed by the ticket
@@ -485,6 +494,17 @@ export function setSpeed(speed) {
 
 export function setRisk(patch) {
   Object.assign(state.risk, patch);
+}
+
+/**
+ * Sets the quick bar's size, or clears it.
+ *
+ * Anything that is not a positive number is not a size, and is kept as null
+ * rather than as a zero the Buy button would have to know to refuse: there is
+ * one representation of "nothing to send", and the button reads it.
+ */
+export function setQuickSize(size) {
+  state.quickSize = Number.isFinite(size) && size > 0 ? size : null;
 }
 
 /** Runs an action against the session and refreshes what the panel shows. */

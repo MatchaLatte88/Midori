@@ -9,7 +9,9 @@ import {
 } from './chart/rangeProfilePrimitive.js';
 import { RangePrimitive } from './chart/rangePrimitive.js';
 import { ReplayPrimitive } from './chart/replayPrimitive.js';
-import { draggableLevels, levelAt, levelRefusal } from './chart/replayLevels.js';
+import {
+  TAG_REACH, closeButtonRect, draggableLevels, fieldForPrice, inRect, levelAt, levelRefusal,
+} from './chart/replayLevels.js';
 import { SessionPrimitive } from './chart/sessionPrimitive.js';
 import { HuntPrimitive } from './chart/huntPrimitive.js';
 import { SetupPrimitive } from './chart/setupPrimitive.js';
@@ -21,12 +23,14 @@ import DrawingToolbar from './DrawingToolbar.vue';
 import PositionStyleBar from './PositionStyleBar.vue';
 import LineStyleBar from './LineStyleBar.vue';
 import FvgToolBar from './FvgToolBar.vue';
+import QuickTradeBar from './QuickTradeBar.vue';
 import { ENTRY, STOP, TARGET, isPositionTool } from './chart/drawings/model.js';
 import { orderFromPlan } from '../../shared/engine/plannedTrade.js';
 import { latestPage, prependBars, previousPage } from './chart/barPaging.js';
 import { datasetFor, session, setError, setVolumeProfile } from '../stores/session.js';
 import {
-  deliverPrice, placeFromPlan, protectPosition, replay, replayMarks, takeEnteredPlans,
+  closePosition, deliverPrice, placeFromPlan, protectPosition, replay, replayMarks,
+  takeEnteredPlans,
 } from '../stores/replay.js';
 
 const props = defineProps({
@@ -306,7 +310,9 @@ function frameReplay() {
 
 /** The open position and the working orders, for the primitive to paint. */
 function pushReplayMarks() {
-  replayPrimitive?.setMarks(replay.active ? replayMarks() : null, replay.bars, levelDrag.value);
+  replayPrimitive?.setMarks(
+    replay.active ? replayMarks() : null, replay.bars, levelDrag.value, levelHover.value,
+  );
 }
 
 /* ─── Taking hold of the position's levels ──────────────────────────────────
@@ -329,6 +335,8 @@ const levelDrag = ref(null);
 const levelHover = ref(null);
 /** Why the last drop was refused. Cleared by the next drag or the next bar. */
 const levelNotice = ref(null);
+/** True between pressing the close button and letting go over it. */
+const pendingClose = ref(false);
 
 /** Where the open position's levels are on screen, and how far they run. */
 function levelTargets() {
@@ -342,13 +350,19 @@ function levelTargets() {
   }
   if (levels.length === 0) return null;
 
-  /* From the bar the position was opened on, because that is where the block
-   * starts: a grab to the left of it would be a grab at nothing. */
+  // Where the block starts: the lines are drawn from the entry bar rightwards.
   const entry = draw.project({ time: position.openedAt, price: position.entryPrice });
   /* The pane's width, not the element's: the lines stop where the price scale
    * begins, and a band of the axis that could not be dragged because a level
-   * happens to run across it would be a strange thing to have built. */
-  return { levels, extent: { left: entry?.x ?? 0, right: chart.value.paneSize().width } };
+   * happens to run across it would be a strange thing to have built.
+   *
+   * The left end is the entry, or the tags against the right edge where the
+   * block is narrower than they are — see TAG_REACH. */
+  const width = chart.value.paneSize().width;
+  return {
+    levels,
+    extent: { left: Math.min(entry?.x ?? 0, width - TAG_REACH), right: width },
+  };
 }
 
 /**
@@ -363,19 +377,73 @@ function levelUnder(point) {
   return targets ? levelAt(point, targets.extent, targets.levels) : null;
 }
 
+/**
+ * Where the button that closes the position is, or null when there is none.
+ *
+ * The rectangle comes from replayLevels.js, which is the same one the primitive
+ * paints — a button whose picture and whose hit area were worked out separately
+ * would eventually be a button that closes a position from somewhere it is not
+ * drawn.
+ */
+function closeTarget() {
+  const position = replay.position;
+  if (!replay.active || !position || !candles.value || !chart.value) return null;
+  const y = candles.value.priceToCoordinate(position.entryPrice);
+  if (y == null) return null;
+  return closeButtonRect(chart.value.paneSize().width, y);
+}
+
+function overClose(point) {
+  if (draw.activeTool.value !== 'cursor' || replay.picking) return false;
+  const rect = closeTarget();
+  return rect ? inRect(point, rect) : false;
+}
+
+/**
+ * Records what the pointer is over, and repaints only when it matters.
+ *
+ * The levels change nothing about the picture — they are a cursor and a live
+ * overlay. The close button does change: it fills when the pointer is on it. So
+ * a repaint is asked for on the way in and on the way out, and never for the
+ * hundreds of moves in between.
+ */
+function setLevelHover(field) {
+  if (levelHover.value === field) return;
+  const wasClose = levelHover.value === 'close';
+  levelHover.value = field;
+  if (wasClose || field === 'close') pushReplayMarks();
+}
+
 function startLevelDrag(point) {
   const field = levelUnder(point);
   if (!field) return false;
   levelNotice.value = null;
-  levelDrag.value = { field, price: replay.position[field] };
+  /* `origin` is which line was actually taken hold of, and it does not change
+   * for the length of the drag. `field` is what the drag currently means, which
+   * for one off the entry line is decided anew on every move. */
+  levelDrag.value = {
+    origin: field,
+    field,
+    price: field === 'entry' ? replay.position.entryPrice : replay.position[field],
+  };
   pushReplayMarks();
   return true;
 }
 
 function moveLevelDrag(point) {
+  const position = replay.position;
   const price = candles.value?.coordinateToPrice(point.y);
-  if (price == null) return;
-  levelDrag.value = { ...levelDrag.value, price };
+  if (price == null || !position) return;
+
+  const { origin } = levelDrag.value;
+  /* Dragged off the entry: the side of the last price says which level this is,
+   * not the direction the pointer went — see fieldForPrice. Everything else
+   * stays the level it was picked up as. */
+  const field = origin === 'entry'
+    ? fieldForPrice(price, position, replay.bars[replay.index]?.close)
+    : origin;
+
+  levelDrag.value = { origin, field, price };
   pushReplayMarks();
 }
 
@@ -396,6 +464,14 @@ function dropLevel() {
 
   // It closed while the pointer was down — a stop the last step filled.
   if (!position) {
+    pushReplayMarks();
+    return;
+  }
+
+  /* Still the entry line, so the pointer never left it: a click on the
+   * position, not a level drawn off it. The entry itself is not a thing that
+   * can be moved — the position opened where it opened. */
+  if (field === 'entry') {
     pushReplayMarks();
     return;
   }
@@ -427,15 +503,18 @@ function forgetLevels() {
   levelDrag.value = null;
   levelHover.value = null;
   levelNotice.value = null;
+  pendingClose.value = false;
 }
 
-/* The overlay takes pointer events for the drawing tools and for these levels;
- * either is reason enough. The level wins the cursor because it is the thing
- * on top. */
+/* The overlay takes pointer events for the drawing tools, for these levels and
+ * for the close button; any of them is reason enough. What is under the pointer
+ * wins the cursor, because it is the thing on top. */
 const overlayOn = computed(() => draw.overlayActive.value || levelHover.value !== null);
-const overlayCursor = computed(() => (
-  levelDrag.value || levelHover.value ? 'ns-resize' : draw.cursorStyle.value
-));
+const overlayCursor = computed(() => {
+  if (levelHover.value === 'close') return 'pointer';
+  if (levelDrag.value || levelHover.value) return 'ns-resize';
+  return draw.cursorStyle.value;
+});
 
 /* Where a click on the chart goes while the ticket has a field armed. The
  * price comes from the y coordinate rather than from the bar under the
@@ -964,9 +1043,15 @@ function onOverlayDown(event) {
   if (event.button !== 0) return;
   overlayEl.value.setPointerCapture(event.pointerId);
   const p = localPoint(event);
-  /* The open position's levels sit above everything drawn by hand, so they get
-   * the press first — a stop that could not be grabbed because a trend line
-   * happened to run under it would be the wrong way round. */
+  /* The close button first of all: it sits on the entry line, so the level
+   * under it would otherwise take the press and start a drag. */
+  if (overClose(p)) {
+    pendingClose.value = true;
+    return;
+  }
+  /* Then the open position's levels, which sit above everything drawn by hand
+   * — a stop that could not be grabbed because a trend line happened to run
+   * under it would be the wrong way round. */
   if (startLevelDrag(p)) return;
   draw.onPointerDown(p.x, p.y, paneSize());
   syncDrawings();
@@ -978,11 +1063,10 @@ function onOverlayMove(event) {
     moveLevelDrag(p);
     return;
   }
-  /* The overlay swallows the host's mousemove while it is switched on, so the
-   * hover has to be kept current from here as well — otherwise a level, once
-   * hovered, would stay hovered for good. Not while anything is being dragged:
-   * a drawing pulled across a level must not take its cursor. */
-  if (event.buttons === 0) levelHover.value = levelUnder(p);
+  /* The close button is asked about before the levels: it sits on the entry
+   * line, so both would answer, and a button that cannot be clicked because
+   * the line under it wants to be dragged is not a button. */
+  if (event.buttons === 0) setLevelHover(overClose(p) ? 'close' : levelUnder(p));
   // Shift locks the drag to one axis; the state is read per event rather than
   // tracked, so releasing the key mid-drag takes effect on the next move.
   draw.onPointerMove(p.x, p.y, paneSize(), event.shiftKey);
@@ -993,6 +1077,14 @@ function onOverlayUp(event) {
   if (event.button !== 0) return;
   if (overlayEl.value.hasPointerCapture(event.pointerId)) {
     overlayEl.value.releasePointerCapture(event.pointerId);
+  }
+  /* A button closes on the release, over itself: pressing it and sliding off
+   * is how anyone takes back a click they did not mean, and this one liquidates
+   * a position. */
+  if (pendingClose.value) {
+    pendingClose.value = false;
+    if (overClose(localPoint(event))) closePosition();
+    return;
   }
   if (levelDrag.value) {
     dropLevel();
@@ -1008,9 +1100,9 @@ function onOverlayUp(event) {
 function onHostMove(event) {
   if (!overlayEl.value || levelDrag.value) return;
   const p = localPoint(event);
-  // Asked about first: a level is on top of everything, so it decides the
+  // Asked about first: these are on top of everything, so they decide the
   // cursor even where a drawing is under the pointer as well.
-  levelHover.value = levelUnder(p);
+  setLevelHover(overClose(p) ? 'close' : levelUnder(p));
   draw.updateHover(p.x, p.y, paneSize());
 }
 
@@ -1257,7 +1349,11 @@ defineExpose({ reload: loadInitial });
       @clear="onToolbarClear"
     />
 
-    <div class="chart-wrap" @contextmenu="onContextMenu">
+    <div
+      class="chart-wrap"
+      :class="{ 'is-trading': replay.active }"
+      @contextmenu="onContextMenu"
+    >
       <div ref="host" class="chart-host"></div>
 
       <!-- Transparent until the pointer is over something it can take hold of —
@@ -1301,6 +1397,11 @@ defineExpose({ reload: loadInitial });
         :merge-unit="draw.fvgStyle.value.mergeUnit"
         @update="onFvgStyle"
       />
+
+      <!-- Only while there is an account for an order to go to. In the bottom
+           left, because the three bars above share the top left corner and this
+           one is on screen at the same time as any of them. -->
+      <QuickTradeBar v-if="replay.active" />
 
       <ConfirmModal
         :open="pendingDelete !== null"
@@ -1347,6 +1448,13 @@ defineExpose({ reload: loadInitial });
   overflow: hidden;
   background: var(--chart-bg);
 }
+
+/* The quick bar takes the top left corner while a session runs, so the style
+ * bars — which share that corner and would otherwise sit under it — step down
+ * below it. They are shown one at a time and never together, so one rule moves
+ * whichever is up. 8px + the bar's 40px + 8px. */
+.chart-wrap.is-trading :deep(.style-bar) { top: 56px; }
+
 .chart-host {
   position: absolute;
   inset: 0;

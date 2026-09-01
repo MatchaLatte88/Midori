@@ -20,19 +20,82 @@
 export const GRAB_TOLERANCE = 5;
 
 /**
- * The protective levels of a position, as {field, price}.
+ * How far in from the right edge a level can be grabbed whatever else is true.
  *
- * A position with nothing on it has none — there is no line drawn, so there is
- * nothing to grab, and offering a handle for a level that does not exist would
- * be offering to drag a price out of thin air. The ticket's Protect row is
- * where protection is *added*; this is where it is moved.
+ * The lines only run from the bar the position was opened on, so a position
+ * opened two bars ago has a block a few pixels wide — and that is exactly when
+ * the stop still has to be put on it. The tags sit against the right edge and
+ * are handles in their own right, so the reach never begins further right than
+ * they do. Wide enough for the longest of them, which is the P&L with an R
+ * beside it.
+ */
+export const TAG_REACH = 140;
+
+/** The button that closes the position: a square against the right edge. */
+export const CLOSE_SIZE = 20;
+/** How far it is held off the edge — the same inset the tags keep. */
+export const CLOSE_INSET = 2;
+
+/**
+ * Where that button sits, given the pane's width and the entry line.
+ *
+ * On the entry line and hard against the right edge, beside the number that
+ * says what closing would realise. Both the drawing and the hit test come from
+ * here, so the thing that is clicked and the thing that is painted cannot drift
+ * apart — which for a button that liquidates a position is worth insisting on.
+ */
+export function closeButtonRect(paneWidth, yEntry) {
+  return {
+    x: paneWidth - CLOSE_SIZE - CLOSE_INSET,
+    y: yEntry - CLOSE_SIZE / 2,
+    width: CLOSE_SIZE,
+    height: CLOSE_SIZE,
+  };
+}
+
+/** Whether a pointer is inside a rectangle. */
+export function inRect(point, rect) {
+  return point.x >= rect.x && point.x <= rect.x + rect.width
+    && point.y >= rect.y && point.y <= rect.y + rect.height;
+}
+
+/**
+ * The levels of a position a pointer can take hold of, as {field, price}.
+ *
+ * The entry line is always one of them, and it is not there to be moved: a
+ * position was opened where it was opened. It is the *source* of the other two.
+ * Dragging off it is how a stop or a target gets put on a position that has
+ * none — which is how it is done everywhere else, and the alternative here was
+ * typing two numbers into a ticket for a trade that is already running.
+ *
+ * Which of the two a drag off the entry becomes is `fieldForPrice`, and it is
+ * decided by where the pointer ends up rather than by which way it went.
  */
 export function draggableLevels(position) {
   if (!position) return [];
-  const levels = [];
+  const levels = [{ field: 'entry', price: position.entryPrice }];
   if (position.stopLoss != null) levels.push({ field: 'stopLoss', price: position.stopLoss });
   if (position.takeProfit != null) levels.push({ field: 'takeProfit', price: position.takeProfit });
   return levels;
+}
+
+/**
+ * Which level a price dragged off the entry line becomes.
+ *
+ * The side of the *last price* decides, not the side of the entry. Below the
+ * market is where a long is protected and where a short takes profit, whatever
+ * the entry has done since — a long that is already 200 in front has an entry
+ * far below the market, and dragging down from it still means "this is where I
+ * am wrong", not "this is my target".
+ *
+ * A price exactly on the last one is answered rather than refused here, and
+ * `levelRefusal` turns it away: one place decides what a level is, another
+ * decides whether it may be there.
+ */
+export function fieldForPrice(price, position, lastPrice) {
+  const long = position.size > 0;
+  const below = price < lastPrice;
+  return (long ? below : !below) ? 'stopLoss' : 'takeProfit';
 }
 
 /**

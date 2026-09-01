@@ -1380,6 +1380,34 @@ genommen wenig; 240 gegen 400 Risiko sagt das meiste. Die Zahl kommt aus `broker
 statt hier noch einmal gerechnet zu werden — sonst könnten Chart und Panel über dasselbe Konto
 verschiedener Meinung sein.
 
+Gezeichnet wird die Position als Verlauf: die Fläche am Level am kräftigsten, zur Einstiegslinie
+hin auslaufend. Um den Einstieg herum stehen die Kerzen, dort soll frei bleiben; das weit
+entfernte Ende ist das Level selbst, und das ist der Teil, den das Auge finden soll. Am
+Blockanfang sitzt ein Dreieck auf der Einstiegslinie, daneben ein Chip mit der Richtung und eine
+Plakette mit Größe und Einstiegspreis — Plakette, weil ein 10px-Label ohne Grund in den Kerzen
+verschwindet. Was nicht mehr auf den Block passt, entfällt der Reihe nach; die Breiten werden
+gemessen und nicht gegen eine Mindestbreite geraten, denn eine Schwelle, die für „0,05 @ 1,2345"
+stimmt, schneidet „0,05 @ 95.205,21" ab.
+
+**Grün und Rot bedeuten hier Gewinn und Verlust und sonst nichts** — das sind die Zonen. Eine
+Richtung ist weder gut noch schlecht, Long und Short nehmen deshalb die beiden Farben, mit denen
+der Chart ohnehin oben und unten zeichnet (`--candle-up-brd` / `--candle-down-body`), so wie
+`_orders` es bei einer ruhenden Order schon immer getan hat. Das ist dieselbe Entscheidung, die
+die Kerzen blau/weiß statt grün/rot macht — siehe `tokens.css`.
+
+**Die Schrift ist hier nicht die Mono der anderen Primitives**, und das ist Absicht. Zonen- und
+Zeichen-Primitives beschriften eine *Analyse* — eine Lücke, ein Level, eine Session —, und dort
+ist Mono richtig: Meta-Text über den Chart, so will es die Designsprache. Dieses Primitive
+beschriftet ein **Konto**: was offen ist, was es wert ist, was der Stop kostet. Das wird im
+Vorbeigehen gelesen, über Kerzen, während sich etwas bewegt — und Inter ist dabei schlicht
+schneller zu erfassen als eine Schreibmaschinenschrift. 12px statt 10, die Richtung im
+Display-Schnitt der Knöpfe mit etwas Laufweite, und alle Kästchen mit `--radius-sm`, also
+derselben Ecke wie Buy und Sell.
+
+Gewicht 600 bei Plus Jakarta Sans, nicht 700: Canvas lädt kein Face nach, das kein Element der
+Seite angefordert hat, ein sonst ungenutztes Gewicht fiele also still auf einen Ersatz zurück.
+Inter liegt als eine Variable-Datei bereit und hat das Problem nicht.
+
 Stop und Ziel tragen ihre eigenen Marken auf derselben Linie und **werden dort auch gezogen**.
 Ein Stop wird verschoben, indem man auf den Chart sieht und ihn hinlegt, nicht indem man eine
 Zahl in ein Ticket tippt. Während die Maus unten ist, ändert sich am Konto nichts: Der Zug ist
@@ -1389,6 +1417,37 @@ damit exakt die Order, die ein getipptes wird, ab der nächsten Bar wie alles an
 
 Beide Legs gehen zusammen zurück in den Markt: `protectPosition` ersetzt, was auf der Position
 liegt — nur das gezogene zu senden, stornierte das andere.
+
+**Wo noch kein Stop ist, wird er von der Einstiegslinie weggezogen.** Die Einstiegslinie ist
+immer greifbar — nicht, um sie zu verschieben, eine Position wurde eröffnet, wo sie eröffnet
+wurde, sondern als *Quelle*. Was dabei entsteht, entscheidet `fieldForPrice`: die Seite des
+**letzten Preises**, nicht die des Einstiegs. Ein Long, der schon 100 vorn liegt, hat seinen
+Einstieg weit unter dem Markt; nach unten davon zu ziehen heißt trotzdem „hier liege ich falsch"
+und nicht „hier ist mein Ziel". Losgelassen, ohne die Linie verlassen zu haben, passiert nichts:
+Das war ein Klick auf die Position, kein gezogenes Level.
+
+Zwei Stellen, zwei Zuständigkeiten: `fieldForPrice` sagt, *was* ein Level ist, `levelRefusal`
+sagt, *ob* es dort sein darf. Genau auf dem letzten Preis beantwortet die erste die Frage und die
+zweite lehnt ab.
+
+Beträge tragen ein **$**, Preise nicht. Auf einer Marke, die beides nebeneinander stellt, sind
+„SL 94.000,00 250,00" zwei Zahlen unbekannter Art; „SL 94.000,00 −$250,00" sind ein Level und
+das, was Irrtum dort kostet. Das Symbol steht in `QUOTE_SYMBOL` — die App führt keine Währung je
+Markt, also ist es genau ein Platzhalter, und ein Markt, der nicht in Dollar notiert, wollte ihn
+aus dem Symbol lesen. Panel und Transportleiste schreiben denselben Betrag genauso, sonst stünde
+dieselbe Zahl an zwei Orten in zwei Schreibweisen.
+
+Ganz rechts auf der Einstiegslinie sitzt ein **×**, das die Position schließt — dieselbe
+Market-Order wie „Close" im Panel. Umrandet, gefüllt erst unter dem Zeiger: Es liquidiert mit
+einem Klick, soll also nach etwas aussehen, das gedrückt wird, und nicht nach etwas, über das man
+fährt. Ausgelöst wird beim Loslassen **über dem Knopf**, denn Drücken und Wegziehen ist, wie man
+einen Klick zurücknimmt, den man nicht meinte.
+
+Sein Rechteck kommt aus `closeButtonRect`, und zwar für das Zeichnen wie für den Treffertest —
+ein Knopf, dessen Bild und dessen Klickfläche getrennt ausgerechnet würden, schlösse irgendwann
+eine Position von einer Stelle aus, an der er nicht zu sehen ist. Gefragt wird er vor den Leveln:
+Er liegt auf der Einstiegslinie, beide antworteten sonst, und ein Knopf, der nicht klickbar ist,
+weil die Linie darunter gezogen werden will, ist keiner.
 
 **Abgelehnt wird ein Level auf der falschen Seite des letzten Preises** (`replayLevels.js`,
 `levelRefusal`). Ein Stop dort ist kein Stop: Er ginge in den Markt, triggerte gegen das nächste
@@ -1407,6 +1466,57 @@ Preisachse anfängt, und ein Band der Achse, das sich nicht ziehen ließe, weil 
 darüber läuft, wäre eine seltsame Sache. Das Overlay schaltet sich für ein Level genauso an wie
 für eine Zeichnung — und weil es dann die `mousemove` des Hosts schluckt, hält es den Hover von
 sich aus aktuell, solange nichts gezogen wird.
+
+Die Marken am rechten Rand sind selbst Griffe, und darum beginnt die greifbare Strecke nie weiter
+rechts als sie: Eine gerade eröffnete Position hat einen Block von wenigen Pixeln Breite — und
+genau dann muss der Stop drauf (`TAG_REACH`).
+
+### Was noch nicht gefüllt hat
+
+Eine Market-Order hat keinen eigenen Preis; sie nimmt, was die nächste Bar aufmacht. Bis dahin
+stand deshalb **nichts** auf dem Chart: Zwischen dem Klick auf Buy und der Bar, die ihn
+beantwortet, sah es aus, als sei nichts passiert.
+
+`announcedEntries` zieht diese Orders aus dem Buch, und `_announced` zeichnet sie ab dem
+Abspielkopf nach rechts, auf Höhe des letzten Schlusskurses — gestrichelt, mit Dreieck,
+Richtungs-Chip und „next bar" dahinter. Das ist ausdrücklich **nicht** die Position, sondern ihre
+Ankündigung: Die Regel, dass eine Order frühestens auf der Bar nach der auslösenden füllt, bleibt
+unberührt, und die gestrichelte Linie sagt genau das. Der Schlusskurs ist die ehrliche Schätzung;
+gefüllt wird zum nächsten Open plus Kosten, und das weiß jetzt niemand.
+
+Rechts vom Abspielkopf liegen nur die paar Bars, die der Chart als Offset hält — selten Platz für
+ein Label. Es rutscht deshalb an seiner eigenen Linie nach links, statt vom Pane abgeschnitten zu
+werden.
+
+Ein `reduceOnly`-Market ist nicht dabei: Er schließt, was schon gezeichnet ist, und ihn als
+ankommende Position zu melden, zeichnete eine zweite in die Gegenrichtung.
+
+### Die Schnellleiste
+
+Oben links im Chart: **Buy**, ein Größenfeld, **Sell**. Ein Klick schickt eine Market-Order über
+denselben Weg wie das Ticket, nur ohne Stop und ohne Ziel — gestrichelt sichtbar ab dem Klick
+(siehe „Was noch nicht gefüllt hat"), gefüllt auf der nächsten Bar. Die drei Style-Leisten teilen
+sich dieselbe Ecke — sie sind immer nur einzeln zu sehen, und solange eine Sitzung läuft, rücken
+sie unter die Leiste (`.is-trading`).
+
+Das Fehlen der Klammer ist der Zweck, nicht die Lücke. Schutz, der hier mit eingetragen würde,
+wäre eine unter Zeitdruck getippte Zahl; die eröffnete Position steht einen Moment später mit
+ihrer eigenen Stop- und Ziellinie im Chart, und die werden mit der Maus hingelegt. Einstieg mit
+der Maus entscheiden, Level mit der Maus entscheiden.
+
+Das Feld ist **leer**, bis eine Größe eingetragen wird, und beide Knöpfe sind bis dahin tot. Eine
+aus dem letzten Setup übriggebliebene Größe ist hier der eine Fehler, der Geld kostet, also wird
+sie nie geraten. Die Pfeile gehen um 1 — auf die Nachkommastelle genau getippt wird alles
+Feinere. Der Wert liegt im Store und nicht in der Komponente, damit ein Wechsel des Reiters kein
+Feld leert, das gerade gebraucht wird.
+
+Das Textfeld hält seinen eigenen Text, statt den geparsten Wert zurückzulesen: Sonst zerfiele die
+„0" von „0,05" beim Tippen zu nichts, das Feld leerte sich unter dem Cursor, und keine Größe
+unter eins wäre je einzugeben.
+
+Gesendet wird nur bei `status === 'ready'` — `active` ist eine Sitzung schon in der Sekunde, in
+der ihr Fenster noch lädt, und dahinter steckt dann noch keine Session, die eine Order annehmen
+könnte.
 
 ### Gespeichert wird als Lauf
 

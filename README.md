@@ -198,6 +198,25 @@ Rechnung wie bei den Strategien, also ist ein von Hand genommener Trade bei glei
 genauso groß wie ein vom Bot genommener. Ohne Stop gibt es keine definierte Risikogröße, und
 der Knopf bleibt aus.
 
+**Oder schnell rein und die Level danach hinlegen.** Oben links im Chart stehen **Buy** und
+**Sell** mit einem Größenfeld dazwischen (die Pfeile gehen um 1, alles Feinere tippst du). Ein
+Klick ist eine Market-Order ohne Stop und ohne Ziel. Sie steht **sofort** gestrichelt im Chart —
+mit Richtung, Größe und dem Hinweis, dass sie auf der nächsten Bar füllt; gefüllt wird sie
+nämlich weiterhin erst dort, wie jede andere Order auch. Stop und Ziel kommen gleich danach, mit
+der Maus:
+
+**Stop und Ziel ziehst du im Chart.** Die Positionslinie ist immer greifbar; von ihr nach unten
+oder oben wegziehen legt das Level an, das dort hingehört — unter dem Markt schützt einen Long
+und nimmt bei einem Short Gewinn mit, darüber umgekehrt. Ein Level, das schon liegt, wird genauso
+verschoben. Während die Maus unten ist, ändert sich nichts am Konto; erst das Loslassen schickt
+die Order, ab der nächsten Bar wie jede andere. Ein Level auf der falschen Seite des letzten
+Preises wird abgelehnt und sagt warum — es hätte die Position geschlossen statt sie zu schützen.
+Die Marken zeigen neben dem Level auch, was es in **$** wert ist: was der Stop kostet, was das
+Ziel einbringt, was offen gerade dasteht.
+
+**Ganz rechts auf der Positionslinie sitzt ein ×.** Ein Klick darauf schließt die Position zu
+Markt — dasselbe wie „Close" im Panel, nur ohne den Weg dorthin.
+
 **Oder du zeichnest den Trade und schickst ihn ab.** Mit dem Positionswerkzeug Entry, Stop und
 Ziel ziehen, dann **Rechtsklick auf den Block**:
 

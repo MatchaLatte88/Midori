@@ -1,6 +1,36 @@
 {
   "releases": [
     {
+      "version": "v0.1.10-dev",
+      "date": "Sep 2026",
+      "changes": [
+        {
+          "type": "feat",
+          "text": "A quick trade bar in the top left of the chart while a replay runs: Buy, a size, Sell. One click sends a market order with no stop and no target - those go on afterwards, by dragging them off the position line. The size field starts empty and both buttons stay off until you set one, because a size left over from a setup that is already over is the one mistake here that costs money"
+        },
+        {
+          "type": "feat",
+          "text": "A market order is now on the chart from the moment you send it. It has no price of its own until the next bar answers it, so until now pressing Buy looked like it had done nothing at all - it is drawn dashed at the last close, with its direction and the bar it is waiting for. It still fills on the next bar, at the same costs as everything else"
+        },
+        {
+          "type": "feat",
+          "text": "An × at the right end of the position line closes it at market, without going to the panel. It fills on release over the button, so sliding off takes the click back"
+        },
+        {
+          "type": "feat",
+          "text": "Stops and targets can be put on a position that has none by dragging off its entry line. Which one you get is decided by where you let go relative to the last price - below the market protects a long and takes profit on a short - not by which way you dragged from the entry"
+        },
+        {
+          "type": "style",
+          "text": "The open position reads at a glance: its zones fade from the level towards the entry so the candles stay clear, a triangle marks where it was opened, and its direction, size and price sit on plates that candles cannot swallow. Long and short take the chart's own up and down colours rather than green and red, which here mean profit and loss and nothing else"
+        },
+        {
+          "type": "style",
+          "text": "Everything the position says is set in the app's text face at a readable size, on rounded chips that match the buttons, and every amount of money now carries a $ - so a tag that shows a level and what being wrong there costs no longer reads as two numbers of unknown kind"
+        }
+      ]
+    },
+    {
       "version": "v0.1.9-dev",
       "date": "Sep 2026",
       "changes": [

@@ -234,9 +234,12 @@ function confirmStop() {
 
 /* ─── Formatting ───────────────────────────────────────────────────────── */
 
-const money = (v) => (v == null ? '—' : v.toLocaleString(undefined, {
+/* The currency goes in front of the digits and the sign in front of that, so a
+ * loss reads −$250.00 rather than $-250.00. Same shape as the chart's own
+ * money(), because it is the same account being written down twice. */
+const money = (v) => (v == null ? '—' : `${v < 0 ? '−' : ''}$${Math.abs(v).toLocaleString(undefined, {
   minimumFractionDigits: 2, maximumFractionDigits: 2,
-}));
+})}`);
 const price = (v) => (v == null ? '—' : v.toLocaleString(undefined, { maximumFractionDigits: 8 }));
 const pct = (v) => (v == null ? '—' : `${(v * 100).toFixed(1)}%`);
 const units = (v) => (v == null ? '—' : Number(v.toPrecision(6)).toString());

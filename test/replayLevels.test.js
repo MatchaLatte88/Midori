@@ -1,21 +1,27 @@
 /* The levels of an open position that can be dragged on the chart.
  *
- * Two properties worth pinning down without a chart to run them on. The first
- * is which line a pointer has hold of: a stop and a target a few pixels apart
- * must resolve to the one being pointed at rather than to whichever comes
- * first in the array, and a grab outside the block must find nothing at all.
+ * Three properties worth pinning down without a chart to run them on.
  *
- * The second is which drops are refused. A stop on the wrong side of the last
- * price is not a stop — it is a market exit one bar later — and a target on the
- * wrong side is a limit that is already marketable. Both are refused where the
- * drop happens, because a position that closed itself a bar after a drag is the
+ * Which line a pointer has hold of: a stop and a target a few pixels apart must
+ * resolve to the one being pointed at rather than to whichever comes first in
+ * the array, and a grab outside the block must find nothing at all.
+ *
+ * What a drag off the entry line becomes: the side of the last price decides,
+ * never the side of the entry — a long already well in front has an entry far
+ * below the market, and dragging down from it still means "this is where I am
+ * wrong".
+ *
+ * And which drops are refused. A stop on the wrong side of the last price is
+ * not a stop — it is a market exit one bar later — and a target on the wrong
+ * side is a limit that is already marketable. Both are refused where the drop
+ * happens, because a position that closed itself a bar after a drag is the
  * hardest kind of surprise to trace back.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  draggableLevels, levelAt, levelRefusal,
+  CLOSE_INSET, closeButtonRect, draggableLevels, fieldForPrice, inRect, levelAt, levelRefusal,
 } from '../src/components/chart/replayLevels.js';
 
 const EXTENT = { left: 100, right: 500 };
@@ -26,25 +32,57 @@ const short = (extra = {}) => ({ size: -1, entryPrice: 100, ...extra });
 
 /* ─── What there is to grab ─────────────────────────────────────────────── */
 
-test('a position with no protection on it offers nothing to drag', () => {
-  // There is no line drawn, so a handle for one would be a handle on nothing.
-  assert.deepEqual(draggableLevels(long()), []);
+test('the entry line is always there to be taken hold of', () => {
+  /* Not to be moved — the position opened where it opened. It is the line a
+   * stop or a target is drawn off, which is the only way to put one on a
+   * position that has none. */
+  assert.deepEqual(draggableLevels(long()), [{ field: 'entry', price: 100 }]);
   assert.deepEqual(draggableLevels(null), []);
 });
 
-test('only the leg that exists is draggable', () => {
-  assert.deepEqual(draggableLevels(long({ stopLoss: 90 })), [{ field: 'stopLoss', price: 90 }]);
-  assert.deepEqual(
-    draggableLevels(long({ takeProfit: 120 })),
-    [{ field: 'takeProfit', price: 120 }],
-  );
-});
-
-test('both legs come back when both are set', () => {
+test('whichever legs exist join the entry', () => {
+  assert.deepEqual(draggableLevels(long({ stopLoss: 90 })), [
+    { field: 'entry', price: 100 },
+    { field: 'stopLoss', price: 90 },
+  ]);
+  assert.deepEqual(draggableLevels(long({ takeProfit: 120 })), [
+    { field: 'entry', price: 100 },
+    { field: 'takeProfit', price: 120 },
+  ]);
   assert.deepEqual(draggableLevels(long({ stopLoss: 90, takeProfit: 120 })), [
+    { field: 'entry', price: 100 },
     { field: 'stopLoss', price: 90 },
     { field: 'takeProfit', price: 120 },
   ]);
+});
+
+/* ─── What a drag off the entry becomes ─────────────────────────────────── */
+
+test('below the market protects a long and pays a short', () => {
+  assert.equal(fieldForPrice(95, long(), 100), 'stopLoss');
+  assert.equal(fieldForPrice(95, short(), 100), 'takeProfit');
+});
+
+test('above the market is the other way round', () => {
+  assert.equal(fieldForPrice(105, long(), 100), 'takeProfit');
+  assert.equal(fieldForPrice(105, short(), 100), 'stopLoss');
+});
+
+test('the last price decides it, never the entry', () => {
+  /* A long 100 in front has an entry far below the market. Dragging down from
+   * that entry still means "this is where I am wrong" — a level between the
+   * entry and the market is a stop, not a target, whatever side of the entry
+   * it happens to be on. */
+  const inProfit = long({ entryPrice: 100 });
+  assert.equal(fieldForPrice(150, inProfit, 200), 'stopLoss');
+  assert.equal(fieldForPrice(250, inProfit, 200), 'takeProfit');
+});
+
+test('a drag that ends on the last price is answered here and refused after', () => {
+  // One place decides what a level is, another whether it may be there.
+  const field = fieldForPrice(100, long(), 100);
+  assert.ok(field === 'stopLoss' || field === 'takeProfit');
+  assert.ok(levelRefusal(field, 100, long(), 100));
 });
 
 /* ─── Which one the pointer has ─────────────────────────────────────────── */
@@ -117,4 +155,27 @@ test('nothing to measure against is a refusal rather than a silent pass', () => 
   assert.ok(levelRefusal('stopLoss', 95, null, 100));
   assert.ok(levelRefusal('stopLoss', Number.NaN, long(), 100));
   assert.ok(levelRefusal('stopLoss', 95, long(), null));
+});
+
+/* ─── The button that closes it ─────────────────────────────────────────── */
+
+test('the close button sits on the entry line against the right edge', () => {
+  const rect = closeButtonRect(800, 300);
+  assert.equal(rect.x + rect.width + CLOSE_INSET, 800, 'held off the edge by the inset');
+  assert.equal(rect.y + rect.height / 2, 300, 'centred on the line');
+});
+
+test('a pointer on the button is inside it, one past the corner is not', () => {
+  const rect = closeButtonRect(800, 300);
+  assert.ok(inRect({ x: rect.x + 1, y: rect.y + 1 }, rect));
+  assert.ok(inRect({ x: rect.x + rect.width, y: rect.y + rect.height }, rect), 'the far corner counts');
+  assert.ok(!inRect({ x: rect.x - 1, y: 300 }, rect));
+  assert.ok(!inRect({ x: rect.x + 1, y: rect.y - 1 }, rect));
+});
+
+test('the button moves with the entry line and with the pane', () => {
+  /* It is drawn from the same rectangle it is clicked in, so a chart that has
+   * been resized or a position that has been re-scaled must move both. */
+  assert.notDeepEqual(closeButtonRect(800, 300), closeButtonRect(800, 120));
+  assert.notDeepEqual(closeButtonRect(800, 300), closeButtonRect(640, 300));
 });
