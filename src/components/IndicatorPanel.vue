@@ -31,9 +31,11 @@ function specFor(id) {
 /* A zone indicator carries its own pair of colours, so its swatch shows both;
  * everything else takes the colour slot it was given when it was added. Stop
  * hunts are drawn differently but named the same way — a bull and a bear
- * colour — so they read off the same pair. */
+ * colour — so they read off the same pair. A range has a direction only once it
+ * breaks, so its swatch is the one colour the box is actually drawn in. */
 function swatchFor(ind) {
   const spec = INDICATORS[ind.id];
+  if (spec.kind === 'ranges') return `var(--${ind.params.color})`;
   if (!['zones', 'hunts', 'setups'].includes(spec.kind)) return `var(--ind-${ind.colorIndex})`;
   return 'linear-gradient(135deg, '
     + `var(--${ind.params.bullColor}) 0 50%, var(--${ind.params.bearColor}) 50%)`;

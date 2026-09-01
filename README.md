@@ -66,8 +66,9 @@ Minuten.
 ## Indikatoren
 
 Vorhanden sind SMA, EMA, Bollinger Bands, RSI, ATR, VWAP, Fair Value Gaps, Inverted Fair
-Value Gaps, Handelssessions und das Volume Profile mit POC und Value Area — als festes Profil
-am rechten Rand und als **Range Profile**, das du über eine selbst gezogene Spanne legst. Oszillatoren bekommen eine eigene Chart-Ebene, damit eine
+Value Gaps, Handelssessions, Stop Hunts, Silver Bullet, Ranges und das Volume Profile mit POC
+und Value Area — als festes Profil am rechten Rand und als **Range Profile**, das du über eine
+selbst gezogene Spanne legst. Oszillatoren bekommen eine eigene Chart-Ebene, damit eine
 0–100-Skala nie mit Preisen zusammengelegt wird.
 
 Jede Einstellung erklärt sich selbst: Fahre mit der Maus über ein Feld im Indikator-Panel,
@@ -98,6 +99,15 @@ Zwei Dinge sind dabei bewusst so gebaut:
   lange sie danach halten muss; ein Durchstoß ohne Rückkehr ist kein Hunt, sondern ein
   Bruch, und wird nicht gezeigt. Auch hier ist getrennt, wo das Niveau liegt und ab welcher
   Bar es überhaupt bekannt war.
+- **Ranges** markieren die Strecken, auf denen der Markt stehen bleibt — und zwar passend zu
+  dem Chart, den du gerade ansiehst. Eine Stunden-Range wird im 1m-Chart **nicht** markiert:
+  Statt einer festen Prozentspanne (die auf 1m alles markiert und auf 1h nichts) wird die
+  Höhe daran gemessen, wie weit dieser Markt in derselben Anzahl Bars normalerweise kommt.
+  Eine Range braucht außerdem eine Mindestlänge und **beide Kanten mehrfach berührt** — sonst
+  wäre jede schmale Diagonale eine. Sie endet an der Bar, die jenseits einer Kante schließt;
+  Dochte durch die Kante verbreitern sie nur. Gezeichnet werden Box, Equilibrium und der
+  Ausbruch samt Richtung, und eine noch laufende Range zieht ihre Kanten gestrichelt bis zum
+  rechten Rand.
 - **Silver Bullet** setzt die Bausteine zu einem fertigen Setup zusammen: ein Sweep holt
   Liquidität, die Umkehr reißt eine FVG, der Preis schließt jenseits der letzten Gegenkerze,
   und der Einstieg liegt beim Rücktest der Lücke — alles in einer der drei Silver-Bullet-Stunden

@@ -1,6 +1,24 @@
 {
   "releases": [
     {
+      "version": "v0.1.8-dev",
+      "date": "Sep 2026",
+      "changes": [
+        {
+          "type": "feat",
+          "text": "A Ranges indicator that marks the stretches where the market stops going anywhere - and marks them to fit the chart you are on. An hourly range does not appear on a 1m chart. Instead of a fixed percent span, which marks 77% of a 1m chart and nothing at all on 1h, the height is measured against how far this market normally travels in the same number of bars, so one setting means the same thing everywhere"
+        },
+        {
+          "type": "feat",
+          "text": "A range has to be reached at both edges more than once, so a narrow diagonal drift no longer counts as one, and it ends on the bar that closes beyond an edge - a wick through the edge only widens it, the way a raid on a level should. The breakout is drawn with its direction, and the equilibrium line down the middle is there for premium and discount"
+        },
+        {
+          "type": "feat",
+          "text": "Every part of the definition is a setting with its own explanation: how long, how tight, how many touches per side, how close to an edge counts, and how far past it a close has to be. A range still running at the right edge keeps its levels drawn dashed to the edge of the chart"
+        }
+      ]
+    },
+    {
       "version": "v0.1.7-dev",
       "date": "Sep 2026",
       "changes": [

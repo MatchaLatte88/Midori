@@ -35,12 +35,20 @@
  * `params` is validated by the caller against PARAM_SCHEMA; compute() trusts it.
  */
 
+import { atr, trueRange, wilder } from './atr.js';
 import {
   FVG_PARAMS, IFVG_PARAMS, detectFairValueGaps, detectInvertedFairValueGaps,
 } from './fvg.js';
+import { RANGE_PARAMS, detectRanges } from './range.js';
 import { SESSION_PARAMS, checkSession, computeSessions } from './sessions.js';
 import { SILVER_BULLET_PARAMS, detectSilverBullet } from './silverBullet.js';
 import { STOPHUNT_PARAMS, detectStopHunts } from './stophunt.js';
+
+/* True range and its Wilder average live in atr.js: ranges need the same
+ * volatility reading the ATR indicator uses, and a second implementation of it
+ * would be exactly the divergence this file's header warns about. Re-exported
+ * because this module is where callers have always found them. */
+export { trueRange, wilder };
 
 /** Reusable schema fragment — the UI generates its input fields from this. */
 const periodParam = (def, label = 'Period', hint) => ({
@@ -117,38 +125,6 @@ export function ema(values, period) {
   for (let i = period; i < values.length; i++) {
     prev = values[i] * k + prev * (1 - k);
     out[i] = prev;
-  }
-  return out;
-}
-
-/** Wilder's smoothing — the average used by RSI and ATR, not a plain EMA. */
-function wilder(values, period) {
-  const out = new Array(values.length).fill(null);
-  if (values.length < period) return out;
-
-  let sum = 0;
-  for (let i = 0; i < period; i++) sum += values[i];
-  let prev = sum / period;
-  out[period - 1] = prev;
-
-  for (let i = period; i < values.length; i++) {
-    prev = (prev * (period - 1) + values[i]) / period;
-    out[i] = prev;
-  }
-  return out;
-}
-
-/** True range per bar; the first bar has no previous close, so it is null. */
-export function trueRange(bars) {
-  const out = new Array(bars.length).fill(null);
-  for (let i = 1; i < bars.length; i++) {
-    const b = bars[i];
-    const prevClose = bars[i - 1].close;
-    out[i] = Math.max(
-      b.high - b.low,
-      Math.abs(b.high - prevClose),
-      Math.abs(b.low - prevClose),
-    );
   }
   return out;
 }
@@ -274,11 +250,7 @@ export const INDICATORS = {
       + 'This is the number a stop distance is usually sized against.')],
     outputs: [{ key: 'value', label: 'ATR', style: 'line' }],
     compute(bars, { period = 14 } = {}) {
-      const tr = trueRange(bars);
-      const smoothed = wilder(tr.slice(1), period);
-      const out = new Array(bars.length).fill(null);
-      for (let i = 0; i < smoothed.length; i++) out[i + 1] = smoothed[i];
-      return { value: out };
+      return { value: atr(bars, period) };
     },
   },
 
@@ -345,6 +317,17 @@ export const INDICATORS = {
     params: IFVG_PARAMS,
     outputs: [{ key: 'zones', label: 'IFVG', style: 'zone' }],
     compute: detectInvertedFairValueGaps,
+  },
+
+  ranges: {
+    id: 'ranges',
+    name: 'Ranges',
+    description: 'Stretches the market spent going nowhere, and the bar that broke them.',
+    pane: 'price',
+    kind: 'ranges',
+    params: RANGE_PARAMS,
+    outputs: [{ key: 'ranges', label: 'Ranges', style: 'zone' }],
+    compute: detectRanges,
   },
 
   sessions: {

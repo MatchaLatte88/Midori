@@ -7,6 +7,7 @@ import { FvgPrimitive } from './chart/fvgPrimitive.js';
 import {
   RangeProfilePrimitive, profileWindow, windowKey,
 } from './chart/rangeProfilePrimitive.js';
+import { RangePrimitive } from './chart/rangePrimitive.js';
 import { SessionPrimitive } from './chart/sessionPrimitive.js';
 import { HuntPrimitive } from './chart/huntPrimitive.js';
 import { SetupPrimitive } from './chart/setupPrimitive.js';
@@ -48,6 +49,10 @@ let fvgPrimitive = null;
 let rangePrimitive = null;
 let sessionPrimitive = null;
 let huntPrimitive = null;
+/* Not `rangePrimitive` — that is the range volume profile, a drawing tool. This
+ * one paints the Ranges indicator. Two different things, unfortunately close in
+ * name; the classes they hold are RangeProfilePrimitive and RangePrimitive. */
+let rangeIndicatorPrimitive = null;
 let setupPrimitive = null;
 /** windowKey -> profile, so panning or selecting never refetches. */
 const rangeProfiles = new Map();
@@ -215,6 +220,7 @@ function syncIndicators() {
   const sessionGroups = [];
   const huntGroups = [];
   const setupGroups = [];
+  const rangeGroups = [];
 
   for (const ind of active) {
     const spec = INDICATORS[ind.id];
@@ -241,6 +247,23 @@ function syncIndicators() {
         setupGroups.push({
           setups,
           // Drawing-only, so these never reached compute() — see fvg.js.
+          bullColor: ind.params.bullColor,
+          bearColor: ind.params.bearColor,
+        });
+      } catch (err) {
+        setError(err);
+      }
+      continue;
+    }
+
+    if (spec.kind === 'ranges') {
+      if (!ind.visible || bars.length === 0) continue;
+      try {
+        const { ranges } = computeIndicator(ind.id, indicatorBars, ind.params);
+        rangeGroups.push({
+          ranges,
+          // Drawing-only, so these never reached compute() — see fvg.js.
+          color: ind.params.color,
           bullColor: ind.params.bullColor,
           bearColor: ind.params.bearColor,
         });
@@ -330,6 +353,7 @@ function syncIndicators() {
   }
 
   fvgPrimitive?.setGroups(zoneGroups);
+  rangeIndicatorPrimitive?.setGroups(rangeGroups);
   sessionPrimitive?.setGroups(sessionGroups);
   huntPrimitive?.setGroups(huntGroups);
   setupPrimitive?.setGroups(setupGroups);
@@ -698,6 +722,9 @@ onMounted(() => {
   rangePrimitive = new RangeProfilePrimitive();
   rangePrimitive.project = draw.project;
   candles.value.attachPrimitive(rangePrimitive);
+
+  rangeIndicatorPrimitive = new RangePrimitive();
+  candles.value.attachPrimitive(rangeIndicatorPrimitive);
 
   sessionPrimitive = new SessionPrimitive();
   candles.value.attachPrimitive(sessionPrimitive);

@@ -192,7 +192,13 @@ Serien-Indikatoren lassen `kind` weg — das ist der Normalfall. Der Chart legt 
 Serie an, sondern schiebt sie in ein Pane-Primitive.
 
 Vorhanden: SMA, EMA, Bollinger Bands, RSI, ATR, VWAP (täglich/wöchentlich verankert),
-Fair Value Gaps, Inverted Fair Value Gaps, Handelssessions, Stop Hunts und Silver Bullet.
+Fair Value Gaps, Inverted Fair Value Gaps, Handelssessions, Stop Hunts, Silver Bullet und
+Ranges.
+
+True Range und die Wilder-Glättung liegen in `shared/indicators/atr.js`, nicht mehr in
+`index.js`: ATR und Ranges brauchen dieselbe Volatilitätszahl, und eine zweite
+Implementierung davon wäre genau die Abweichung, vor der der Kopf von `index.js` warnt.
+`index.js` re-exportiert beide, damit bestehende Importe dort bleiben, wo sie waren.
 
 Silver Bullet ist zusätzlich als **Strategie** registriert und damit backtestbar — siehe
 Abschnitt 8b. Der Detektor bleibt derselbe; nur die Verwendung ist eine zweite.
@@ -462,9 +468,88 @@ zuerst erreicht ist; berührt eine Bar beides, gewinnt der Stop. Die Engine kann
 sie löst über Minutenbars auf (siehe Abschnitt 4) —, dieser Indikator hat nur die angezeigten
 Bars. `outcome` ist also eine gegen das Setup verzerrte Schätzung, keine Abrechnung.
 
+### Ranges
+
+Alles andere in diesem Ordner findet eine **Bewegung** — eine Lücke, einen Sweep, einen
+Impuls. Ranges finden das Gegenteil: die Strecken, auf denen der Markt schlicht stehen
+bleibt, und das ist der größere Teil des Tages.
+
+**Warum eine Prozentschwelle nicht funktioniert.** Die naheliegende Definition — „Hoch minus
+Tief unter x %" — ist die, an der ein Range-Indikator scheitert, und zwar spektakulär.
+Gemessen auf drei Monaten BTC markiert eine Spanne von 0,3 % über 20 Bars **77 % des
+1m-Charts** und auf 1h **gar nichts**. Bei 1 % sind es 99 % gegen 11 %. Es gibt keinen Wert
+dazwischen, der auf beiden funktioniert: Die Zahl misst den Timeframe, nicht den Markt.
+
+**Die Normierung.** Nicht den Preis messen, sondern den Preis gegen das, was dieser Markt in
+derselben Anzahl Bars normalerweise zurücklegt. Über N Bars kommt ein Random Walk etwa
+`ATR × √N` weit — das √N ist kein Fudge-Faktor, sondern die Skalierung der Diffusion, und der
+Grund, warum 100 Bars nicht das Zehnfache von 10 Bars abdecken. Also:
+
+```
+compression = height / (ATR × √length)
+```
+
+Die Verteilung dieses Verhältnisses ist über alle Timeframes praktisch dieselbe Zahl —
+Median 1,21 auf 1m, 1,05 auf 5m, 0,97 auf 15m, 0,97 auf 1h, 0,98 auf 4h, mit ebenso eng
+laufendem unterem Rand. **Eine** Schwelle bedeutet damit überall dasselbe. Voreingestellt
+sind 0,6; das markiert 14 % des 1m-Charts, 28 % auf 5m, 40 % auf 15m, 30 % auf 1h, 34 % auf
+4h.
+
+**Damit ist die eigentliche Frage beantwortet:** Eine Stunden-Range darf im 1m-Chart nicht
+auftauchen. Sie tut es nicht. Von den 24 Ranges, die auf 1h in diesem Zeitraum gefunden
+werden, hat **keine einzige** ein Gegenstück auf 1m — 1200 Minutenbars einer Stunden-Balance
+decken ungefähr das ab, was 1200 Minutenbars üblicherweise abdecken. Umgekehrt genauso: keine
+der 674 1m-Ranges erscheint als dieselbe Range auf 1h. `maxBars` sichert dieselbe Regel noch
+einmal stumpf ab.
+
+Die Volatilität wird an den Bars **vor** der Range gemessen, nie in ihr. Innen wäre
+zirkulär — eine Range drückt ihr eigenes ATR, und jede würde bestehen.
+
+**Vier Bedingungen, jede gegen einen anderen Hochstapler:** Mindestlänge (drei ruhige Kerzen
+sind keine Range), Kompression (siehe oben), Berührungen (beide Kanten je `minTouches` mal
+getrennt besucht — ohne das qualifiziert sich jede schmale Diagonale) und ein Ende (ein Close
+jenseits einer Kante; 95 % auf 1m und 92 % auf 15m enden so, der Rest weitet sich aus oder
+läuft an den Rand der Daten).
+
+`minTouches` von 1 ist **kein** Filter: Die Kanten sind die Extrema genau dieser Bars, eine
+Berührung je Seite gibt es also per Konstruktion. 2 ist die erste Einstellung, die etwas
+verlangt (sie entfernt 28 % der Kandidaten), 3 entfernt 77 %.
+
+**Kein Drift-Filter.** Das Erste, wonach man greift, um die langsame Diagonale
+auszuschließen — und es ist überflüssig: Die gefundenen Ranges haben eine Kaufman Efficiency
+Ratio von 0,09–0,16 im Median gegen 0,18 für beliebige Fenster gleicher Länge. Länge,
+Kompression und Berührungen haben bereits entfernt, was er entfernen würde.
+
+**Ablauf.** Saat, erweitern, brechen. Jede Position wird als Start eines `minBars`-Fensters
+geprüft; die früheste, die eng genug ist, gewinnt, damit die linke Kante die des Marktes ist
+und nicht die des Scans. Beim Erweitern **verbreitert** eine Bar, die nur über eine Kante
+docht, die Range — das ist ein Raid auf die Kante, den sie überlebt —, während eine Bar, die
+darüber **schließt**, sie beendet. Die Kompressionsprüfung läuft bei jeder neuen Länge erneut,
+sonst bläht sich eine Range langsam zu einem Trend auf. Ranges überlappen nie.
+
+**Die Kanten tragen dieselbe Look-Ahead-Disziplin wie die Indizes.** `top` und `bottom` sind
+Endwerte, und die hat eine Range erst, wenn sie vorbei ist; sie auf der Bestätigungsbar zu
+zitieren gäbe einer Strategie eine Kante, die der Markt noch nicht gedruckt hatte. Die Kanten
+zum Bestätigungszeitpunkt laufen deshalb getrennt mit, als `confirmTop` und `confirmBottom`,
+und nur die darf etwas lesen, das in Echtzeit handelt. In der Praxis sind sie fast die
+endgültigen — die Höhe wächst danach im Median um 0 % und im 90. Perzentil um 7 % (1m) bis
+16 % (1h) —, aber „fast immer gleich" ist kein Vertrag.
+
+Gezeichnet werden vier Marken: die Box über die Bars, die wirklich dazugehören (eine Range
+läuft **nicht** bis zum rechten Rand wie eine offene Lücke — ihre Breite ist der lesbare
+Teil), das Equilibrium gestrichelt in der Mitte, bei einer noch laufenden Range beide Kanten
+gestrichelt bis zum Rand, und der Ausbruch als Kasten von der gefallenen Kante bis zum Close
+der Ausbruchsbar — das Spiegelbild der Raid-Box aus `huntPrimitive.js`. Die Box behält eine
+Farbe, egal wie es ausging: sie nach dem späteren Ausbruch einzufärben wäre die visuelle Form
+genau des Look-Aheads, den der Detektor vermeidet.
+
+Kosten: 0,5 ms für die 3000 Bars, die der Chart hält.
+
 ### Zonenfarben
 
-Die Zonen-Indikatoren, die Stop Hunts und die Silver-Bullet-Setups tragen je zwei Farbparameter (bullisch / bärisch). Gespeichert werden
+Die Zonen-Indikatoren, die Stop Hunts und die Silver-Bullet-Setups tragen je zwei
+Farbparameter (bullisch / bärisch); Ranges tragen drei — eine neutrale für die Box und je eine
+für den Ausbruch nach oben und nach unten. Gespeichert werden
 **Token-Namen, kein Hex**: dieselbe Wahl muss in Hell und Dunkel funktionieren, und das tut
 nur ein Token. Der Renderer setzt die Deckkraft ausschließlich über `globalAlpha` und backt
 sie nie zusätzlich in die Farbe — beides zusammen multipliziert sich, und eine Zone, die mit
