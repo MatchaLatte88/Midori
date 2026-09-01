@@ -439,3 +439,135 @@ test('an unknown size unit is refused rather than guessed', () => {
   );
   assert.throws(() => computeIndicator('fvg', bars(BULL), { minSizeUnit: 'pips' }), /not one of/);
 });
+
+/* ─── Stacked gaps ──────────────────────────────────────────────────────── */
+
+/* Two bullish gaps left by one impulse: 100..109.5 confirmed on bar 2, and
+ * 110..116 confirmed on bar 3. Half a point of traded price between them, and
+ * their bar spans overlap — the case the setting exists for. */
+const STACK = [
+  [99, 100, 98, 99],
+  [99, 110, 99, 109],
+  [110, 115, 109.5, 114],
+  [116, 118, 116, 117],
+];
+
+/* The same two price levels, but with two bars in between that left no gap of
+ * their own: 100..109.5 confirmed on bar 2, 110..116 not until bar 6. */
+const BROKEN_CHAIN = [
+  [99, 100, 98, 99],
+  [99, 110, 99, 109],
+  [110, 115, 109.5, 114],
+  [110, 111, 109.8, 110],
+  [110, 110, 109.9, 110],
+  [111, 120, 110, 119],
+  [117, 125, 116, 124],
+];
+
+/* A bullish gap and a bearish one that overlap outright — nothing between them
+ * at all, and still two different readings of the market. */
+const OPPOSED = [
+  [99, 100, 98, 99],
+  [99, 110, 99, 109],
+  [110, 115, 109.5, 114],
+  [110, 112, 105, 106],
+  [105, 109.4, 100, 101],
+];
+
+const zonesOf = (rows, params) => detectFairValueGaps(bars(rows), { show: 'all', ...params }).zones;
+
+test('gaps stacked with a thin strip between them become one zone', () => {
+  const apart = zonesOf(STACK, { mergeWick: 0 });
+  assert.equal(apart.length, 2, 'off by default');
+  assert.deepEqual(apart.map((z) => [z.bottom, z.top]), [[100, 109.5], [110, 116]]);
+
+  const [merged, ...rest] = zonesOf(STACK, { mergeWick: 1, minSizeUnit: 'points' });
+  assert.equal(rest.length, 0, 'the run is one zone');
+  assert.equal(merged.direction, 'bull');
+  assert.equal(merged.bottom, 100, 'spans the outer edges of the whole run');
+  assert.equal(merged.top, 116);
+  assert.equal(merged.size, 16);
+});
+
+test('a strip wider than the setting still separates two gaps', () => {
+  // The strip is half a point, so it is inside 1 and outside 0.4.
+  assert.equal(zonesOf(STACK, { mergeWick: 0.4, minSizeUnit: 'points' }).length, 2);
+  // And 0.456% of the price it sits at, so the same two thresholds in percent.
+  assert.equal(zonesOf(STACK, { mergeWick: 0.5 }).length, 1);
+  assert.equal(zonesOf(STACK, { mergeWick: 0.4 }).length, 2);
+});
+
+test('a merged zone starts at the first gap and is confirmed at the last', () => {
+  const [merged] = zonesOf(STACK, { mergeWick: 1, minSizeUnit: 'points' });
+  assert.equal(merged.startIndex, 0, 'drawn from where the run begins');
+  assert.equal(merged.startTime, 0);
+  /* Confirmation cannot be inherited from the first gap: before bar 3 nothing
+   * could know the run reached 116, and a strategy given index 2 would trade a
+   * zone that had not finished forming. */
+  assert.equal(merged.index, 3);
+  assert.equal(merged.time, 3);
+});
+
+test('a run breaks where a bar leaves no gap, however close the prices are', () => {
+  /* Same half-point strip as STACK, and this time it must not merge: the two
+   * gaps come from different moves, with bars in between that traded. Joining
+   * by price alone is what turns a month of chart into one box. */
+  const zones = zonesOf(BROKEN_CHAIN, { mergeWick: 5, minSizeUnit: 'points' });
+  assert.equal(zones.length, 2);
+  assert.deepEqual(zones.map((z) => [z.bottom, z.top]), [[100, 109.5], [110, 116]]);
+});
+
+test('gaps of opposite direction never merge, overlap or not', () => {
+  const zones = zonesOf(OPPOSED, { mergeWick: 100, minSizeUnit: 'points' });
+  assert.equal(zones.length, 2);
+  assert.deepEqual(zones.map((z) => z.direction), ['bull', 'bear']);
+});
+
+test('mitigation is judged on the merged zone, not on the gaps it came from', () => {
+  /* Price comes back to 110, which crosses the upper gap end to end but is
+   * nowhere near the bottom of the run. A zone that is one thing has to be
+   * filled as one thing. */
+  const rows = [...STACK, [117, 118, 110, 112]];
+  const [merged] = zonesOf(rows, { mergeWick: 1, minSizeUnit: 'points' });
+  assert.equal(merged.mitigatedIndex, null, 'the run is not filled by a dip into its top');
+
+  const [lower, upper] = zonesOf(rows, { mergeWick: 0 });
+  assert.equal(upper.mitigatedIndex, 4, 'the upper gap alone would have been');
+  assert.equal(lower.mitigatedIndex, null);
+});
+
+test('the size filter runs after the merge, not before it', () => {
+  // 9.5 and 6 points on their own, 16 together. A run that adds up to a
+  // tradable zone must not be discarded one sliver at a time.
+  assert.equal(zonesOf(STACK, { minSize: 12, minSizeUnit: 'points' }).length, 0);
+  assert.equal(
+    zonesOf(STACK, { minSize: 12, minSizeUnit: 'points', mergeWick: 1 }).length, 1,
+  );
+});
+
+test('an inverted gap merges the gaps it is built from', () => {
+  // A close at 105 is past the upper gap's floor of 110, but nowhere near the
+  // run's own floor of 100.
+  const rows = [...STACK, [116, 117, 104, 105]];
+  assert.equal(
+    detectInvertedFairValueGaps(bars(rows)).zones.length, 1,
+    'the upper gap alone inverts',
+  );
+  assert.equal(
+    detectInvertedFairValueGaps(bars(rows), { mergeWick: 1, minSizeUnit: 'points' }).zones.length,
+    0,
+    'the run is not broken until price closes past its outer edge',
+  );
+});
+
+test('the merge setting reaches both indicators through the schema', () => {
+  // computeIndicator validates against the schema, so a parameter missing from
+  // it would throw here rather than being silently ignored.
+  for (const id of ['fvg', 'ifvg']) {
+    const loose = computeIndicator(id, bars(STACK), { mergeWick: 0 });
+    const tight = computeIndicator(id, bars(STACK), { mergeWick: 5 });
+    assert.ok(loose.zones.length >= tight.zones.length, `${id} takes mergeWick`);
+  }
+  assert.equal(FVG_PARAMS.find((p) => p.key === 'mergeWick').default, 0);
+  assert.equal(IFVG_PARAMS.find((p) => p.key === 'mergeWick').default, 0);
+});

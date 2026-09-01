@@ -8,18 +8,26 @@ import {
   RangeProfilePrimitive, profileWindow, windowKey,
 } from './chart/rangeProfilePrimitive.js';
 import { RangePrimitive } from './chart/rangePrimitive.js';
+import { ReplayPrimitive } from './chart/replayPrimitive.js';
+import { draggableLevels, levelAt, levelRefusal } from './chart/replayLevels.js';
 import { SessionPrimitive } from './chart/sessionPrimitive.js';
 import { HuntPrimitive } from './chart/huntPrimitive.js';
 import { SetupPrimitive } from './chart/setupPrimitive.js';
 import { DrawingPrimitive } from './chart/drawings/drawingPrimitive.js';
 import { useDrawings } from './chart/drawings/useDrawings.js';
+import ChartContextMenu from './ChartContextMenu.vue';
 import ConfirmModal from './ConfirmModal.vue';
 import DrawingToolbar from './DrawingToolbar.vue';
 import PositionStyleBar from './PositionStyleBar.vue';
 import LineStyleBar from './LineStyleBar.vue';
-import { isPositionTool } from './chart/drawings/model.js';
+import FvgToolBar from './FvgToolBar.vue';
+import { ENTRY, STOP, TARGET, isPositionTool } from './chart/drawings/model.js';
+import { orderFromPlan } from '../../shared/engine/plannedTrade.js';
 import { latestPage, prependBars, previousPage } from './chart/barPaging.js';
 import { datasetFor, session, setError, setVolumeProfile } from '../stores/session.js';
+import {
+  deliverPrice, placeFromPlan, protectPosition, replay, replayMarks, takeEnteredPlans,
+} from '../stores/replay.js';
 
 const props = defineProps({
   symbol: { type: String, default: null },
@@ -54,6 +62,9 @@ let huntPrimitive = null;
  * name; the classes they hold are RangeProfilePrimitive and RangePrimitive. */
 let rangeIndicatorPrimitive = null;
 let setupPrimitive = null;
+/* The live account — the open position and whatever is still working. Drawn on
+ * top of the candles rather than behind them: it is not context, it is state. */
+let replayPrimitive = null;
 /** windowKey -> profile, so panning or selecting never refetches. */
 const rangeProfiles = new Map();
 let rangeTimer = null;
@@ -81,6 +92,13 @@ const hasSelection = computed(() => draw.selectedId.value !== null);
 const pendingDelete = ref(null);
 
 const drawingCount = computed(() => draw.drawings.value.length);
+
+/* The chart's one line of feedback. Loading and data problems come from
+ * `status`; the drawing tools add their own — a gap tool that found no gap
+ * under the pointer has not errored, so it never goes through setError and
+ * would otherwise have nowhere to say so. A level dropped somewhere it cannot
+ * go is the same kind of thing. */
+const chartStatus = computed(() => status.value || levelNotice.value || draw.notice.value);
 
 /* The style bar only makes sense while a position block is selected — for a
  * trend line there is nothing on it to set. */
@@ -191,6 +209,346 @@ function render() {
   buildIndicatorBars();
   syncIndicators();
 }
+
+/* ─── Replay ────────────────────────────────────────────────────────────────
+ *
+ * A running replay hands the chart its bars instead of the chart fetching its
+ * own, and hands it only the ones up to the playhead. Everything downstream
+ * then follows without knowing a replay exists: an indicator computed over
+ * `bars` cannot see a bar that has not been revealed, because it is not in the
+ * array. That is a stronger guarantee than hiding the candles would be, and it
+ * is the same guarantee the backtest engine gives a strategy.
+ *
+ * Why loading is frozen meanwhile: the session counts every index from the
+ * front of its own array, so a page of older bars arriving at the front would
+ * move every trade it has already taken onto a different bar. Forward chunks
+ * are appended by the store, which is the one direction that is safe.
+ */
+
+/** How many replay bars are currently on the chart, or -1 for none. */
+let replayShown = -1;
+
+/**
+ * Puts the revealed part of the replay window on the chart.
+ *
+ * One bar further along the same window is the common case — thirty times a
+ * second at the top speed — so that path appends a single bar instead of
+ * rebuilding fifteen hundred of them and every indicator's input array with
+ * them. Anything else (a session starting, a chunk appended, a jump) rebuilds.
+ *
+ * The view itself is never touched. A replay is set up by hand — the zoom, and
+ * where the newest candle sits so there is room to the right to read into — and
+ * scrolling to the last bar on every reveal threw that away one step at a time.
+ * Nothing has to be done to keep it: the time scale holds a right offset rather
+ * than an absolute range, so revealing a bar leaves the newest candle exactly
+ * where it was and moves the chart along under it. A chart that has been
+ * scrolled back into history is compensated the other way by the library, and
+ * stays on the bars being read. Both are what is wanted; both only happen while
+ * nothing here interferes.
+ */
+function applyReplayBars() {
+  const full = replay.bars;
+  /* First pass for this chart instance — a session starting, or the view being
+   * returned to while one is running. Either way the chart has to be aimed at
+   * the playhead rather than at wherever it was left. */
+  const first = replayShown === -1;
+
+  if (full.length === 0) {
+    bars = [];
+    indicatorBars = [];
+    replayShown = -1;
+    candles.value?.setData([]);
+    volume.value?.setData([]);
+    syncIndicators();
+    return;
+  }
+
+  const wanted = replay.index + 1;
+  const appending = wanted === replayShown + 1 && bars.length === replayShown;
+
+  if (appending) {
+    const [bar] = toSeries([full[replay.index]]);
+    const p = palette();
+    bars.push(bar);
+    indicatorBars.push({ ...bar, time: bar.time * 1000 });
+    candles.value.update({
+      time: bar.time, open: bar.open, high: bar.high, low: bar.low, close: bar.close,
+    });
+    volume.value.update({
+      time: bar.time,
+      value: bar.volume,
+      color: bar.close >= bar.open ? p.volUp : p.volDown,
+    });
+    syncIndicators();
+  } else {
+    bars = toSeries(full.slice(0, wanted));
+    earliestMs = full[0].time;
+    render();
+  }
+
+  replayShown = wanted;
+  status.value = '';
+  pushReplayMarks();
+  if (first) frameReplay();
+}
+
+/** Frames the chart on the playhead when a session begins. */
+function frameReplay() {
+  if (bars.length === 0) return;
+  /* The recent past and a little room to the right. Fitting the whole window
+   * would show fifteen hundred bars of lead-in at a zoom nothing is readable
+   * at, and the lead-in is context, not the subject. */
+  chart.value?.timeScale().setVisibleLogicalRange({
+    from: Math.max(0, bars.length - 250),
+    to: bars.length + 8,
+  });
+}
+
+/** The open position and the working orders, for the primitive to paint. */
+function pushReplayMarks() {
+  replayPrimitive?.setMarks(replay.active ? replayMarks() : null, replay.bars, levelDrag.value);
+}
+
+/* ─── Taking hold of the position's levels ──────────────────────────────────
+ *
+ * A stop is moved by looking at the chart and putting it where it belongs, not
+ * by typing a number into a ticket, so the two lines the open position draws
+ * can be dragged. Nothing about the account changes while the pointer is down:
+ * the drag is a preview the primitive paints, and only the drop replaces the
+ * protection — through protectPosition, so a level moved by hand becomes
+ * exactly the order a level typed in becomes, live from the next bar like
+ * everything else.
+ *
+ * The geometry, and the rule about which drops are refused, are in
+ * chart/replayLevels.js where they can be checked without a chart.
+ */
+
+/** { field, price } while a level is being dragged, else null. */
+const levelDrag = ref(null);
+/** The field under the pointer — what turns the overlay on for a level. */
+const levelHover = ref(null);
+/** Why the last drop was refused. Cleared by the next drag or the next bar. */
+const levelNotice = ref(null);
+
+/** Where the open position's levels are on screen, and how far they run. */
+function levelTargets() {
+  const position = replay.position;
+  if (!replay.active || !position || !candles.value || !chart.value) return null;
+
+  const levels = [];
+  for (const { field, price } of draggableLevels(position)) {
+    const y = candles.value.priceToCoordinate(price);
+    if (y != null) levels.push({ field, y });
+  }
+  if (levels.length === 0) return null;
+
+  /* From the bar the position was opened on, because that is where the block
+   * starts: a grab to the left of it would be a grab at nothing. */
+  const entry = draw.project({ time: position.openedAt, price: position.entryPrice });
+  /* The pane's width, not the element's: the lines stop where the price scale
+   * begins, and a band of the axis that could not be dragged because a level
+   * happens to run across it would be a strange thing to have built. */
+  return { levels, extent: { left: entry?.x ?? 0, right: chart.value.paneSize().width } };
+}
+
+/**
+ * The level a pointer has hold of, or null.
+ *
+ * Never while a tool is armed, and never while the ticket is waiting for a
+ * price: both mean the next click was already promised to something else.
+ */
+function levelUnder(point) {
+  if (draw.activeTool.value !== 'cursor' || replay.picking) return null;
+  const targets = levelTargets();
+  return targets ? levelAt(point, targets.extent, targets.levels) : null;
+}
+
+function startLevelDrag(point) {
+  const field = levelUnder(point);
+  if (!field) return false;
+  levelNotice.value = null;
+  levelDrag.value = { field, price: replay.position[field] };
+  pushReplayMarks();
+  return true;
+}
+
+function moveLevelDrag(point) {
+  const price = candles.value?.coordinateToPrice(point.y);
+  if (price == null) return;
+  levelDrag.value = { ...levelDrag.value, price };
+  pushReplayMarks();
+}
+
+/**
+ * Drops the level — and only now does anything actually move.
+ *
+ * Both legs go back in together: protectPosition replaces what is on the
+ * position, so sending only the one that was dragged would cancel the other.
+ * The price is rounded the way the ticket's own picker rounds it, so a level
+ * dragged and a level clicked land on the same number rather than on sixteen
+ * digits of one.
+ */
+function dropLevel() {
+  const { field, price } = levelDrag.value;
+  const position = replay.position;
+  levelDrag.value = null;
+  levelHover.value = null;
+
+  // It closed while the pointer was down — a stop the last step filled.
+  if (!position) {
+    pushReplayMarks();
+    return;
+  }
+
+  /* Pressed and let go without moving: a click on the line, not a new level.
+   * Committing it anyway would cancel and re-place the same two orders, and the
+   * stored session would carry the churn. */
+  if (price === position[field]) {
+    pushReplayMarks();
+    return;
+  }
+
+  const refusal = levelRefusal(field, price, position, replay.bars[replay.index]?.close);
+  if (refusal) {
+    levelNotice.value = refusal;
+    pushReplayMarks();
+    return;
+  }
+
+  protectPosition({
+    stopLoss: field === 'stopLoss' ? Number(price.toPrecision(8)) : position.stopLoss,
+    takeProfit: field === 'takeProfit' ? Number(price.toPrecision(8)) : position.takeProfit,
+  });
+  pushReplayMarks();
+}
+
+/** Nothing left to hold on to: the session ended, or the view was left. */
+function forgetLevels() {
+  levelDrag.value = null;
+  levelHover.value = null;
+  levelNotice.value = null;
+}
+
+/* The overlay takes pointer events for the drawing tools and for these levels;
+ * either is reason enough. The level wins the cursor because it is the thing
+ * on top. */
+const overlayOn = computed(() => draw.overlayActive.value || levelHover.value !== null);
+const overlayCursor = computed(() => (
+  levelDrag.value || levelHover.value ? 'ns-resize' : draw.cursorStyle.value
+));
+
+/* Where a click on the chart goes while the ticket has a field armed. The
+ * price comes from the y coordinate rather than from the bar under the
+ * pointer: a stop is a level, and reading it off a candle's close would put it
+ * wherever that candle happened to end. */
+function onChartClick(param) {
+  if (!replay.active || !replay.picking || !param.point || !candles.value) return;
+  const price = candles.value.coordinateToPrice(param.point.y);
+  if (price != null) deliverPrice(price);
+}
+
+/* ─── Turning a drawn position into an order ────────────────────────────────
+ *
+ * The position tool already asks for everything an order needs except the
+ * size, so a block that is already on the chart should not have to be retyped
+ * into a ticket — that is the moment the numbers get typed wrong. Right-click
+ * it and it becomes an order.
+ *
+ * Only while a replay is running. On the plain chart there is no account for
+ * an order to go to, and a menu offering to trade into nothing would be worse
+ * than no menu.
+ *
+ * What each of the two does is in shared/engine/plannedTrade.js. Both rows are
+ * built up front rather than on click, because a block that cannot become an
+ * order — a stop sitting on the entry, a target on the wrong side — should say
+ * so in the menu instead of failing after it is chosen.
+ */
+const menu = ref({ open: false, x: 0, y: 0, title: '', items: [], plan: null, drawingId: null });
+
+const priceText = (v) => v.toLocaleString(undefined, { maximumFractionDigits: 8 });
+
+/** One menu row per mode, or a row saying why that mode is unavailable. */
+function planItems(plan, price) {
+  return ['market', 'pending'].map((mode) => {
+    try {
+      const spec = orderFromPlan(plan, { price, mode });
+      const target = spec.reward == null ? '' : ` · target ${priceText(spec.reward)}`;
+
+      return mode === 'market'
+        ? {
+          id: mode,
+          label: `Market ${spec.side}`,
+          detail: `now, at the drawn distances — risk ${priceText(spec.risk)}${target}`,
+        }
+        : {
+          id: mode,
+          label: `${spec.side === 'buy' ? 'Buy' : 'Sell'} ${spec.type}`,
+          detail: `waits at ${priceText(spec.price)} — risk ${priceText(spec.risk)}${target}`,
+        };
+    } catch (err) {
+      return {
+        id: mode,
+        label: mode === 'market' ? 'Market order' : 'Pending order',
+        detail: err.message,
+        disabled: true,
+      };
+    }
+  });
+}
+
+function onContextMenu(event) {
+  closeMenu();
+  if (!replay.active || draw.activeTool.value !== 'cursor') return;
+
+  const point = localPoint(event);
+  const hit = draw.findAt(point.x, point.y, paneSize());
+  if (!hit || !isPositionTool(hit.type)) return;
+
+  const price = replay.bars[replay.index]?.close;
+  if (price == null) return;
+
+  /* Only from here on is the browser's own menu suppressed: a right-click
+   * anywhere else on the chart is not ours to take. */
+  event.preventDefault();
+
+  const plan = {
+    entry: hit.points[ENTRY].price,
+    stop: hit.points[STOP].price,
+    target: hit.points[TARGET]?.price ?? null,
+  };
+
+  menu.value = {
+    open: true,
+    x: event.clientX,
+    y: event.clientY,
+    title: `Drawn position · last ${priceText(price)}`,
+    items: planItems(plan, price),
+    plan,
+    drawingId: hit.id,
+  };
+}
+
+function closeMenu() {
+  menu.value = { ...menu.value, open: false };
+}
+
+/* The drawing is handed over with the order. It stays while the order is only
+ * waiting — until a resting entry fills, the block is the only thing showing
+ * where its stop and target will go — and is removed the moment the entry
+ * actually happens, because from then on the engine draws the position and two
+ * nearly identical blocks on top of each other say nothing extra. */
+function onMenuSelect(mode) {
+  placeFromPlan(menu.value.plan, mode, menu.value.drawingId);
+}
+
+/* Plans that have been entered, cleared out as they arrive. Watched rather
+ * than done inside onMenuSelect, because the moment that matters is the fill,
+ * which can be many bars later or never. */
+watch(() => replay.enteredPlans.length, (count) => {
+  if (count === 0) return;
+  for (const id of takeEnteredPlans()) draw.remove(id);
+  syncDrawings();
+});
 
 /* ─── Indicators ────────────────────────────────────────────────────────── */
 
@@ -499,6 +857,14 @@ async function loadInitial() {
   bars = [];
   indicatorBars = [];
   earliestMs = null;
+
+  /* A running session owns the window. Fetching the latest page underneath it
+   * would replace the bars its indices are counted against. */
+  if (replay.active) {
+    applyReplayBars();
+    return;
+  }
+
   if (!props.symbol) {
     status.value = '';
     candles.value?.setData([]);
@@ -538,6 +904,8 @@ async function loadInitial() {
 
 /** Pulls the previous page when the view approaches the left edge. */
 async function loadOlder() {
+  // See applyReplayBars: prepending would move every index the session holds.
+  if (replay.active) return;
   if (loadingPage || !props.symbol || earliestMs == null) return;
   const meta = datasetFor(props.symbol);
   if (!meta || earliestMs <= meta.first) return;
@@ -589,15 +957,32 @@ watch(() => draw.activeTool.value, (tool) => {
   });
 });
 
+/* Only the primary button draws and drags. The secondary one opens the
+ * context menu, and capturing it here would drag the very drawing that was
+ * right-clicked out from under the menu that is about to cover it. */
 function onOverlayDown(event) {
+  if (event.button !== 0) return;
   overlayEl.value.setPointerCapture(event.pointerId);
   const p = localPoint(event);
+  /* The open position's levels sit above everything drawn by hand, so they get
+   * the press first — a stop that could not be grabbed because a trend line
+   * happened to run under it would be the wrong way round. */
+  if (startLevelDrag(p)) return;
   draw.onPointerDown(p.x, p.y, paneSize());
   syncDrawings();
 }
 
 function onOverlayMove(event) {
   const p = localPoint(event);
+  if (levelDrag.value) {
+    moveLevelDrag(p);
+    return;
+  }
+  /* The overlay swallows the host's mousemove while it is switched on, so the
+   * hover has to be kept current from here as well — otherwise a level, once
+   * hovered, would stay hovered for good. Not while anything is being dragged:
+   * a drawing pulled across a level must not take its cursor. */
+  if (event.buttons === 0) levelHover.value = levelUnder(p);
   // Shift locks the drag to one axis; the state is read per event rather than
   // tracked, so releasing the key mid-drag takes effect on the next move.
   draw.onPointerMove(p.x, p.y, paneSize(), event.shiftKey);
@@ -605,8 +990,13 @@ function onOverlayMove(event) {
 }
 
 function onOverlayUp(event) {
+  if (event.button !== 0) return;
   if (overlayEl.value.hasPointerCapture(event.pointerId)) {
     overlayEl.value.releasePointerCapture(event.pointerId);
+  }
+  if (levelDrag.value) {
+    dropLevel();
+    return;
   }
   draw.onPointerUp();
   syncDrawings();
@@ -616,8 +1006,11 @@ function onOverlayUp(event) {
  * handler even through the transparent overlay. That is what lets the overlay
  * stay out of the way until the pointer is actually over a drawing. */
 function onHostMove(event) {
-  if (!overlayEl.value) return;
+  if (!overlayEl.value || levelDrag.value) return;
   const p = localPoint(event);
+  // Asked about first: a level is on top of everything, so it decides the
+  // cursor even where a drawing is under the pointer as well.
+  levelHover.value = levelUnder(p);
   draw.updateHover(p.x, p.y, paneSize());
 }
 
@@ -672,6 +1065,12 @@ function onToolbarColor(color) {
 function onPositionStyle(patch) {
   draw.setPositionStyle(patch);
   syncDrawings();
+}
+
+/* Nothing to repaint: the setting changes what the next click picks up, not
+ * what is already on the chart. */
+function onFvgStyle(patch) {
+  draw.setFvgStyle(patch);
 }
 
 /* The buttons ask; the Delete key does not. Pressing Delete means selecting a
@@ -742,6 +1141,9 @@ onMounted(() => {
   });
   candles.value.attachPrimitive(vpPrimitive);
 
+  replayPrimitive = new ReplayPrimitive();
+  candles.value.attachPrimitive(replayPrimitive);
+
   drawPrimitive = new DrawingPrimitive();
   drawPrimitive.project = draw.project;
   drawPrimitive.barsBetween = draw.barsBetween;
@@ -749,6 +1151,7 @@ onMounted(() => {
 
   host.value.addEventListener('mousemove', onHostMove);
   window.addEventListener('keydown', onKeyDown);
+  chart.value.subscribeClick(onChartClick);
 
   applyTheme();
 
@@ -774,6 +1177,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   clearTimeout(profileTimer);
   clearTimeout(rangeTimer);
+  chart.value?.unsubscribeClick(onChartClick);
   themeObserver?.disconnect();
   host.value?.removeEventListener('mousemove', onHostMove);
   window.removeEventListener('keydown', onKeyDown);
@@ -793,6 +1197,29 @@ watch(() => props.symbol, async () => {
 }, { immediate: true });
 
 watch(() => session.indicators, syncIndicators, { deep: true });
+
+/* Every reveal, every appended chunk, and the moment a session starts or
+ * stops. Starting or stopping goes through loadInitial, which decides between
+ * the replay window and normal paging; the rest only redraw. */
+watch(() => replay.active, () => {
+  replayShown = -1;
+  forgetLevels();
+  closeMenu();
+  loadInitial();
+});
+watch(() => [replay.index, replay.barsVersion], () => {
+  if (!replay.active) return;
+  applyReplayBars();
+});
+
+/* An order placed or cancelled changes nothing about the bars, so the marks
+ * are pushed on their own rather than through a redraw. */
+watch(() => [replay.position, replay.orders], () => {
+  /* A refusal was about a level on an account that has since moved on; it has
+   * had its bar to be read on. */
+  levelNotice.value = null;
+  pushReplayMarks();
+}, { deep: true });
 watch(
   () => {
     const v = session.volumeProfile;
@@ -830,17 +1257,18 @@ defineExpose({ reload: loadInitial });
       @clear="onToolbarClear"
     />
 
-    <div class="chart-wrap">
+    <div class="chart-wrap" @contextmenu="onContextMenu">
       <div ref="host" class="chart-host"></div>
 
-      <!-- Transparent until the pointer is over a drawing or a tool is armed;
-           see useDrawings.js for why it cannot simply always be on. -->
+      <!-- Transparent until the pointer is over something it can take hold of —
+           a drawing, or one of a running replay's levels — or until a tool is
+           armed; see useDrawings.js for why it cannot simply always be on. -->
       <div
         ref="overlayEl"
         class="chart-overlay"
         :style="{
-          pointerEvents: draw.overlayActive.value ? 'auto' : 'none',
-          cursor: draw.cursorStyle.value,
+          pointerEvents: overlayOn ? 'auto' : 'none',
+          cursor: overlayCursor,
         }"
         @pointerdown="onOverlayDown"
         @pointermove="onOverlayMove"
@@ -864,6 +1292,16 @@ defineExpose({ reload: loadInitial });
         @update="onLineStyle"
       />
 
+      <!-- Armed rather than selected: this one says what the next click picks
+           up. Arming a tool clears the selection, so it cannot collide with
+           the two bars above it. -->
+      <FvgToolBar
+        v-if="draw.activeTool.value === 'fvg'"
+        :merge-wick="draw.fvgStyle.value.mergeWick"
+        :merge-unit="draw.fvgStyle.value.mergeUnit"
+        @update="onFvgStyle"
+      />
+
       <ConfirmModal
         :open="pendingDelete !== null"
         :title="pendingDelete === 'all' ? 'Remove every drawing?' : 'Delete this drawing?'"
@@ -876,7 +1314,17 @@ defineExpose({ reload: loadInitial });
         @cancel="pendingDelete = null"
       />
 
-      <div v-if="status" class="chart-status k-mono-label">{{ status }}</div>
+      <div v-if="chartStatus" class="chart-status k-mono-label">{{ chartStatus }}</div>
+
+      <ChartContextMenu
+        :open="menu.open"
+        :x="menu.x"
+        :y="menu.y"
+        :title="menu.title"
+        :items="menu.items"
+        @select="onMenuSelect"
+        @close="closeMenu"
+      />
     </div>
   </div>
 </template>

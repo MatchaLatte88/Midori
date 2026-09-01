@@ -52,6 +52,13 @@ const tools = computed(() => TOOLS);
         <!-- Rectangle -->
         <rect v-else-if="tool.icon === 'rectangle'" x="4" y="6" width="16" height="12" rx="1" />
 
+        <!-- Fair value gap: three bars, and the stretch between the outer
+             two that neither of them traded into -->
+        <template v-else-if="tool.icon === 'fvg'">
+          <rect x="3" y="9" width="18" height="4" stroke="none" :style="{ fill: 'currentColor', fillOpacity: 0.3 }" />
+          <path d="M3 9h18M3 13h18" />
+          <path d="M6 13v7M12 4v16M18 4v5" />
+        </template>
         <!-- A bracketed span with a histogram inside it. -->
         <template v-else-if="tool.icon === 'rangeprofile'">
           <path d="M4 4v16M20 4v16" />

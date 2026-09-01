@@ -4,6 +4,8 @@ import ChartPanel from './components/ChartPanel.vue';
 import DataManager from './components/DataManager.vue';
 import IndicatorPanel from './components/IndicatorPanel.vue';
 import BacktestPanel from './components/BacktestPanel.vue';
+import ReplayBar from './components/ReplayBar.vue';
+import ReplayPanel from './components/ReplayPanel.vue';
 import ResultsPage from './components/ResultsPage.vue';
 import SweepPanel from './components/SweepPanel.vue';
 import ChangelogModal from './components/ChangelogModal.vue';
@@ -13,6 +15,7 @@ import {
   clearError, initTheme, refreshDatasets, session, setError, setThemeMode, setTimeframe,
   setView,
 } from './stores/session.js';
+import { replay } from './stores/replay.js';
 
 /* The chart's own controls only mean something on the chart. Symbol and
  * timeframe are shared with a run, so they stay visible everywhere — a
@@ -20,6 +23,7 @@ import {
  * about to test. */
 const NAV = [
   { id: 'chart', label: 'Chart' },
+  { id: 'replay', label: 'Replay' },
   { id: 'backtest', label: 'Backtest' },
   { id: 'sweep', label: 'Auto backtest' },
   { id: 'results', label: 'Results' },
@@ -73,10 +77,21 @@ onMounted(async () => {
 
     <span class="current-symbol">{{ session.symbol ?? 'No symbol' }}</span>
 
-    <div class="tf-group">
+    <!-- Locked while a replay runs: the session's bars are that timeframe, and
+         switching would leave the chart drawing one thing while the account was
+         playing out another. -->
+    <div
+      class="tf-group"
+      v-hint="replay.active ? {
+        label: 'Timeframe',
+        text: 'Fixed while a replay is running — the session is playing out these bars. '
+          + 'Stop it to change timeframe.',
+      } : null"
+    >
       <button
         v-for="tf in TIMEFRAMES"
         :key="tf"
+        :disabled="replay.active"
         :class="['btn', 'btn--sm', session.timeframe === tf ? 'btn--accent' : 'btn--default']"
         @click="setTimeframe(tf)"
       >{{ tf }}</button>
@@ -120,6 +135,19 @@ onMounted(async () => {
     <template v-if="session.view === 'chart'">
       <DataManager />
       <ChartPanel :symbol="session.symbol" :timeframe="session.timeframe" />
+      <IndicatorPanel />
+    </template>
+
+    <!-- Replay is the chart with a playhead on it, so it is the same chart:
+         the indicators, the drawing tools and the panels all work exactly as
+         they do on the chart view, because they are the same components. What
+         changes is where the bars come from — see stores/replay.js. -->
+    <template v-else-if="session.view === 'replay'">
+      <ReplayPanel />
+      <div class="stage">
+        <ReplayBar />
+        <ChartPanel :symbol="session.symbol" :timeframe="session.timeframe" />
+      </div>
       <IndicatorPanel />
     </template>
 
@@ -294,6 +322,16 @@ onMounted(async () => {
   cursor: pointer;
 }
 .error-close:hover { color: var(--txt); background: var(--glass); }
+
+/* The replay column: transport on top, chart filling the rest. */
+.stage {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
 
 .workspace {
   position: relative;

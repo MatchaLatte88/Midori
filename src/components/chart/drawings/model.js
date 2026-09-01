@@ -47,6 +47,12 @@ export const TOOLS = [
     icon: 'rectangle',
   },
   {
+    id: 'fvg',
+    name: 'Fair value gap',
+    hint: 'Click an imbalance to mark it — the box snaps to the gap',
+    icon: 'fvg',
+  },
+  {
     id: 'fib',
     name: 'Fib retracement',
     hint: 'Drag from the start of a move to its end',
@@ -100,8 +106,23 @@ export const DRAWING_COLORS = [
   { id: 'accent', label: 'Midori' },
 ];
 
-/** Stroke widths offered for line-based drawings, in pixels. */
-export const LINE_WIDTHS = [1, 2, 3, 4];
+/* An FVG box is coloured by the direction of the gap rather than by whatever
+ * the toolbar had armed, so a marked imbalance reads the same way as the
+ * indicator's. These are the indicator's own two defaults. It lands in the
+ * normal `color` field, so the palette recolours it afterwards like anything
+ * else. */
+export const FVG_COLORS = { bull: 'candle-up-brd', bear: 'candle-down-body' };
+
+/* Stroke widths offered for line-based drawings, in pixels. Finely stepped at
+ * the thin end, because that is the end that gets used: these strokes sit on
+ * top of candles, and the edges of a gap box are often only a few pixels apart
+ * to begin with. */
+export const LINE_WIDTHS = [1, 1.5, 2, 3];
+
+/* The thickest width offered before this scale was narrowed. A drawing saved
+ * with one of the old numbers clamps onto the nearest current width instead of
+ * losing its stroke and snapping back to a hairline. */
+const LEGACY_MAX_WIDTH = 4;
 
 /* Dash patterns, named rather than stored as arrays: the numbers are a
  * rendering detail, and a saved file that carried them would freeze today's
@@ -122,11 +143,24 @@ export function dashPattern(lineStyle) {
   return LINE_STYLES.find((s) => s.id === lineStyle)?.dash ?? [];
 }
 
-/** Clamps a stored width to one the toolbar can actually show. */
+/**
+ * Clamps a stored width to one the toolbar can actually show.
+ *
+ * Anything outside the range this app has ever offered is not a width, it is
+ * damage: 0 draws nothing, a negative throws in some engines, 99 is nonsense.
+ * Those fall back. A number inside the range came from somewhere — an older
+ * scale, a hand-edited file — and the nearest offered width is closer to that
+ * intent than the default would be. A tie goes to the thinner of the two, since
+ * a stroke that is too thin is easier to notice and fix than one that quietly
+ * covers the candles under it.
+ */
 export function normalizeWidth(value) {
   if (!Number.isFinite(value)) return DEFAULT_LINE_STYLE.width;
-  const rounded = Math.round(value);
-  return LINE_WIDTHS.includes(rounded) ? rounded : DEFAULT_LINE_STYLE.width;
+  if (value < LINE_WIDTHS[0] || value > LEGACY_MAX_WIDTH) return DEFAULT_LINE_STYLE.width;
+
+  return LINE_WIDTHS.reduce((best, w) => (
+    Math.abs(w - value) < Math.abs(best - value) ? w : best
+  ), LINE_WIDTHS[0]);
 }
 
 /* Zone colours for the position tools. The semantic pair leads, because that is
@@ -186,6 +220,16 @@ export function createDrawing(type, points, options = {}) {
     createdAt: Date.now(),
   };
 
+  /* Which way the gap goes. The one stored fact in this model that cannot be
+   * read back off the anchors: a box knows its two prices, not whether the
+   * imbalance that left them came from a move up or down. */
+  if (type === 'fvg') {
+    if (options.direction !== 'bull' && options.direction !== 'bear') {
+      throw new Error(`createDrawing: fvg needs a direction of "bull" or "bear", got ${options.direction}`);
+    }
+    drawing.direction = options.direction;
+  }
+
   // Zone styling only means something on a position block; other types would
   // just carry dead fields around.
   if (isPositionTool(type)) {
@@ -230,6 +274,14 @@ export function parseDrawing(raw) {
       ? raw.lineStyle : DEFAULT_LINE_STYLE.lineStyle,
     createdAt: Number.isFinite(raw.createdAt) ? raw.createdAt : Date.now(),
   };
+
+  /* A gap with no readable direction cannot be coloured, and the anchors
+   * cannot supply one — so the entry is lost rather than guessed at. Unlike the
+   * styling below, this is content, not decoration. */
+  if (type === 'fvg') {
+    if (raw.direction !== 'bull' && raw.direction !== 'bear') return null;
+    drawing.direction = raw.direction;
+  }
 
   if (isPositionTool(type)) {
     // Styling written before these fields existed, or written badly, falls back

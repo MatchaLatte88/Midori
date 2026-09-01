@@ -7,9 +7,10 @@ import {
   measureStats, pointsRequired, positionDirection, positionStats, snapAxis, snapToAxis,
 } from '../src/components/chart/drawings/geometry.js';
 import {
-  DEFAULT_LINE_STYLE, DEFAULT_POSITION_STYLE, DRAWING_TYPES, ENTRY, LEGACY_POSITION_TYPES,
-  LINE_STYLES, LINE_WIDTHS, MAX_FILL_OPACITY, STOP, TARGET, ZONE_COLORS, createDrawing,
-  dashPattern, moveAnchor, normalizeOpacity, normalizeWidth, parseDrawing, translateDrawing,
+  DEFAULT_LINE_STYLE, DEFAULT_POSITION_STYLE, DRAWING_TYPES, ENTRY, FVG_COLORS,
+  LEGACY_POSITION_TYPES, LINE_STYLES, LINE_WIDTHS, MAX_FILL_OPACITY, STOP, TARGET,
+  ZONE_COLORS, createDrawing, dashPattern, moveAnchor, normalizeOpacity, normalizeWidth,
+  parseDrawing, translateDrawing,
 } from '../src/components/chart/drawings/model.js';
 
 const SIZE = { width: 800, height: 400 };
@@ -591,10 +592,14 @@ test('an unusable width falls back rather than reaching the canvas', () => {
   for (const bad of [0, -2, 99, NaN, Infinity, null, undefined, 'thick']) {
     assert.equal(normalizeWidth(bad), DEFAULT_LINE_STYLE.width, `width ${bad}`);
   }
-  /* A fractional width rounds to the nearest offered one rather than falling
-   * back: 2.5 came from somewhere, and 3 is closer to that intent than 1. */
-  assert.equal(normalizeWidth(2.5), 3);
-  assert.equal(normalizeWidth(1.4), 1);
+  /* A width the bar does not offer still came from somewhere — an older scale,
+   * a hand-edited file — so it lands on the nearest one rather than falling back
+   * to a hairline. A tie goes to the thinner of the two. */
+  assert.equal(normalizeWidth(1.4), 1.5);
+  assert.equal(normalizeWidth(2.6), 3);
+  assert.equal(normalizeWidth(2.5), 2, 'exactly between 2 and 3');
+  // The scale used to run to 4, and a chart full of drawings predates it.
+  assert.equal(normalizeWidth(4), 3, 'the old thickest becomes the new thickest');
   // Everything the bar offers survives untouched.
   for (const w of LINE_WIDTHS) assert.equal(normalizeWidth(w), w);
 });
@@ -611,11 +616,11 @@ test('an unknown dash draws solid rather than not at all', () => {
 
 test('stroke settings survive create → parse', () => {
   const made = createDrawing('rectangle', [{ time: 1, price: 1 }, { time: 9, price: 9 }], {
-    color: 'ind-3', width: 4, lineStyle: 'dotted',
+    color: 'ind-3', width: 1.5, lineStyle: 'dotted',
   });
   const back = parseDrawing(JSON.parse(JSON.stringify(made)));
 
-  assert.equal(back.width, 4);
+  assert.equal(back.width, 1.5, 'a half-pixel width survives the round trip');
   assert.equal(back.lineStyle, 'dotted');
   assert.equal(back.color, 'ind-3');
 });
@@ -656,5 +661,72 @@ test('every width and style the bar offers is one the model accepts', () => {
       lineStyle: style.id,
     });
     assert.equal(d.lineStyle, style.id);
+  }
+});
+
+/* ─── Fair value gap tool ───────────────────────────────────────────────── */
+
+test('a gap is picked with one click but stored as a box', () => {
+  // The only type where the gesture collects fewer points than the drawing
+  // keeps: the bars supply the second anchor, not the pointer.
+  assert.equal(gesturePoints('fvg'), 1);
+  assert.equal(pointsRequired('fvg'), 2);
+});
+
+test('a gap box is grabbed anywhere over its area', () => {
+  const pts = [{ x: 100, y: 100 }, { x: 300, y: 130 }];
+  assert.equal(hitTest('fvg', pts, { x: 200, y: 115 }, SIZE), true, 'inside');
+  assert.equal(hitTest('fvg', pts, { x: 100, y: 103 }, SIZE), true, 'on an edge');
+  assert.equal(hitTest('fvg', pts, { x: 200, y: 160 }, SIZE), false, 'below it');
+  assert.equal(hitTest('fvg', pts, { x: 400, y: 115 }, SIZE), false, 'past its right edge');
+});
+
+test('a gap carries the one fact its anchors cannot supply', () => {
+  const bull = createDrawing('fvg', [
+    { time: 1, price: 110 }, { time: 5, price: 100 },
+  ], { direction: 'bull', color: FVG_COLORS.bull });
+
+  assert.equal(bull.direction, 'bull');
+  assert.equal(bull.color, 'candle-up-brd', 'coloured by direction, not by the toolbar');
+
+  // A box knows two prices; which way the imbalance ran is not among them, so
+  // it cannot be guessed at creation time either.
+  assert.throws(() => createDrawing('fvg', [
+    { time: 1, price: 110 }, { time: 5, price: 100 },
+  ]), /needs a direction/);
+  assert.throws(() => createDrawing('fvg', [
+    { time: 1, price: 110 }, { time: 5, price: 100 },
+  ], { direction: 'sideways' }), /needs a direction/);
+});
+
+test('only a gap carries a direction', () => {
+  const rect = createDrawing('rectangle', [
+    { time: 1, price: 110 }, { time: 5, price: 100 },
+  ]);
+  assert.equal('direction' in rect, false);
+});
+
+test('a stored gap survives create → parse, and a directionless one is dropped', () => {
+  const made = createDrawing('fvg', [
+    { time: 1, price: 110 }, { time: 5, price: 100 },
+  ], { direction: 'bear', color: FVG_COLORS.bear });
+  const back = parseDrawing(JSON.parse(JSON.stringify(made)));
+  assert.deepEqual(back, made);
+
+  // Content, not decoration: a gap that cannot say which way it ran is lost
+  // rather than quietly turned into a bullish one.
+  assert.equal(parseDrawing({
+    type: 'fvg', points: [{ time: 1, price: 110 }, { time: 5, price: 100 }],
+  }), null);
+  assert.equal(parseDrawing({
+    type: 'fvg',
+    points: [{ time: 1, price: 110 }, { time: 5, price: 100 }],
+    direction: 'up',
+  }), null);
+});
+
+test('the gap colours are token names, not raw colours', () => {
+  for (const [direction, token] of Object.entries(FVG_COLORS)) {
+    assert.match(token, /^[a-z0-9-]+$/, `${direction} must name a CSS token`);
   }
 });

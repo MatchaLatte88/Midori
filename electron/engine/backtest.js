@@ -50,7 +50,8 @@
  * one per stretch for exactly this reason.
  */
 import { computeIndicator } from '../../shared/indicators/index.js';
-import { Broker, SIDE } from './broker.js';
+import { Broker, SIDE } from '../../shared/engine/broker.js';
+import { summarize } from '../../shared/engine/summary.js';
 
 /* One frozen array for every barless answer, rather than a fresh [] per call.
  * A strategy that asks on every bar would otherwise allocate one per bar, and
@@ -351,38 +352,4 @@ function inferStepMs(bars) {
     throw new Error('runBacktest: could not determine the bar duration — timestamps do not advance');
   }
   return smallest;
-}
-
-/** Performance figures. Only quantities that can be computed honestly here. */
-function summarize({ broker, equityCurve, maxDrawdown, maxDrawdownPct, barCount }) {
-  const trades = broker.trades;
-  const wins = trades.filter((t) => t.netPnl > 0);
-  const losses = trades.filter((t) => t.netPnl < 0);
-
-  const grossProfit = wins.reduce((a, t) => a + t.netPnl, 0);
-  const grossLoss = Math.abs(losses.reduce((a, t) => a + t.netPnl, 0));
-  const netPnl = broker.equity - broker.initialBalance;
-  const fees = broker.fills.reduce((a, f) => a + f.fee, 0);
-
-  return {
-    initialBalance: broker.initialBalance,
-    finalEquity: broker.equity,
-    netPnl,
-    returnPct: netPnl / broker.initialBalance,
-    maxDrawdown,
-    maxDrawdownPct,
-    tradeCount: trades.length,
-    winCount: wins.length,
-    lossCount: losses.length,
-    // An account with no trades has no win rate — 0% would read as "always lost".
-    winRate: trades.length > 0 ? wins.length / trades.length : null,
-    avgWin: wins.length > 0 ? grossProfit / wins.length : null,
-    avgLoss: losses.length > 0 ? grossLoss / losses.length : null,
-    // Infinite profit factor is real when nothing lost; null keeps it out of sums.
-    profitFactor: grossLoss > 0 ? grossProfit / grossLoss : (grossProfit > 0 ? null : 0),
-    expectancy: trades.length > 0 ? trades.reduce((a, t) => a + t.netPnl, 0) / trades.length : null,
-    feesPaid: fees,
-    barCount,
-    equityPoints: equityCurve.length,
-  };
 }

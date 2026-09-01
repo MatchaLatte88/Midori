@@ -34,6 +34,13 @@ contextBridge.exposeInMainWorld('midori', {
     annotate: (id, note) => ipcRenderer.invoke('backtest:annotate', { id, note }),
   },
 
+  replay: {
+    /* Stores a finished replay session as a run. The session itself never
+     * comes here — it is played out in the renderer against the same engine a
+     * backtest uses; only the result crosses. */
+    save: (request) => ipcRenderer.invoke('replay:save', request),
+  },
+
   sweep: {
     /* Resolves with the finished sweep, or { cancelled: true }. Nothing is
      * stored: the result lives as long as the page shows it. Progress arrives

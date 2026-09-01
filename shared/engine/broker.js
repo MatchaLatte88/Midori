@@ -20,6 +20,18 @@
  * pessimistic rule applies: the fill that hurts the position happens first.
  * `fill.resolution` records which of the two applied, so a result can always
  * be traced back to how it was decided.
+ *
+ * Why this is in shared/ and not beside the backtest engine
+ * ---------------------------------------------------------
+ * Because replay is the other half of the sentence at the top. A backtest runs
+ * in the main process, where the bars already are; a replay runs in the
+ * renderer, because a click has to become an order and a drawn chart in the
+ * same frame rather than after a round trip. Both need this class, and the
+ * renderer cannot reach into electron/ — so the class that both of them stand
+ * on belongs where both of them can import it, which is here.
+ *
+ * There are no Node imports below, and there must not be: this file is bundled
+ * into the renderer.
  */
 
 let nextId = 1;
@@ -104,11 +116,15 @@ export class Broker {
    * @param {boolean} [spec.reduceOnly]   may only shrink an open position
    * @param {string} [spec.tag]           free label, e.g. 'stop-loss'
    * @param {number} [spec.parentId]      cancelled together with its siblings
+   * @param {object} [spec.bracket]       protection to attach the moment it
+   *   fills — see `_attachBracket`. Each leg is either an absolute price
+   *   (`stopLoss`, `takeProfit`) or a distance from the fill (`stopDistance`,
+   *   `targetDistance`), never both.
    */
   placeOrder(spec) {
     const {
       side, type = 'market', size, limitPrice, stopPrice,
-      reduceOnly = false, tag = null, parentId = null,
+      reduceOnly = false, tag = null, parentId = null, bracket = null,
     } = spec;
 
     if (side !== SIDE.BUY && side !== SIDE.SELL) {
@@ -126,6 +142,7 @@ export class Broker {
     if (!['market', 'limit', 'stop'].includes(type)) {
       throw new Error(`placeOrder: unknown order type "${type}"`);
     }
+    if (bracket) validateBracket(bracket);
 
     const order = {
       id: nextId++,
@@ -137,6 +154,9 @@ export class Broker {
       reduceOnly,
       tag,
       parentId,
+      /* Attached on fill rather than now. Null on every order that carries no
+       * protection, which is most of them. */
+      bracket: bracket ?? null,
       status: 'pending',
       placedAt: this.time,
       filledAt: null,
@@ -366,10 +386,85 @@ export class Broker {
 
     this._applyToPosition(fill);
 
+    // Protection an entry was carrying goes in now that there is a position.
+    if (order.bracket) this._attachBracket(order, fill);
+
     // A filled bracket leg retires its siblings.
     if (order.parentId != null || order.tag === 'stop-loss' || order.tag === 'take-profit') {
       this._cancelSiblings(order);
     }
+  }
+
+  /**
+   * Places the stop and target an entry was carrying, now that it has filled.
+   *
+   * Why this exists at all
+   * ----------------------
+   * `submitEntry` can place a bracket up front because a market entry fills on
+   * the very next bar. A *resting* entry cannot: a stop and a target sitting in
+   * the market against a position that does not exist yet would either open a
+   * trade in the wrong direction, or — being reduceOnly — quietly cancel
+   * themselves the first time price reached one of them, leaving the entry to
+   * fill later with nothing behind it.
+   *
+   * So the levels ride along on the order and become real orders here, at the
+   * moment the position does. That is also what an exchange does with an
+   * attached OCO.
+   *
+   * When they become live
+   * ---------------------
+   * `_fillAgainst` snapshots the pending orders before it starts, so these are
+   * not considered on the step that placed them — they are live from the next
+   * one. With sub-bars that is the next minute of the same bar, which is close
+   * to how quickly real protection arms. Without them it is the next bar, and
+   * on that one bar the trade is unprotected in its own favour. That is the
+   * same one-step delay every order in this engine is subject to, and the fill
+   * still records the resolution it was decided under.
+   *
+   * Distances, not just levels
+   * --------------------------
+   * A leg given as a distance is measured from the price this actually filled
+   * at, spread and slippage included, so a plan drawn as "risk 500" costs 500
+   * however far the market gapped on the way in. A leg given as a price is used
+   * as it stands. The two forms are mutually exclusive per leg — see
+   * `validateBracket`.
+   */
+  _attachBracket(order, fill) {
+    const position = this.position;
+    // Nothing opened — a reduceOnly fill, or one that closed out instead.
+    if (!position) return;
+
+    const long = position.size > 0;
+    const dir = long ? 1 : -1;
+    const { stopLoss, takeProfit, stopDistance, targetDistance } = order.bracket;
+
+    const stop = stopLoss ?? (stopDistance == null ? null : fill.price - dir * stopDistance);
+    const target = takeProfit ?? (targetDistance == null ? null : fill.price + dir * targetDistance);
+    if (stop == null && target == null) return;
+
+    const exitSide = long ? SIDE.SELL : SIDE.BUY;
+    const size = fill.size;
+
+    /* Both under the entry's id, so whichever fills retires the other — the
+     * same grouping submitEntry uses, and the reason a position is never left
+     * with a stray order behind it. */
+    if (stop != null) {
+      this.placeOrder({
+        side: exitSide, size, type: 'stop', stopPrice: stop,
+        reduceOnly: true, tag: 'stop-loss', parentId: order.id,
+      });
+    }
+    if (target != null) {
+      this.placeOrder({
+        side: exitSide, size, type: 'limit', limitPrice: target,
+        reduceOnly: true, tag: 'take-profit', parentId: order.id,
+      });
+    }
+
+    /* The position keeps them too, because that is what the closed trade
+     * carries and what a review draws the bracket from. */
+    position.stopLoss = stop;
+    position.takeProfit = target;
   }
 
   _removePending(order) {
@@ -469,6 +564,43 @@ export class Broker {
     } else {
       pos.size = remaining;
       pos.fees = 0; // fees up to here are settled with the closed trade
+    }
+  }
+}
+
+/**
+ * Checks a bracket before it is stored on an order.
+ *
+ * Refused here rather than at the fill, because that is the only moment the
+ * caller can still see which of its own numbers was wrong. A bracket that
+ * failed silently would leave an entry to fill hours later with no protection
+ * behind it and nothing to say why.
+ */
+function validateBracket(bracket) {
+  if (typeof bracket !== 'object') {
+    throw new Error(`placeOrder: bracket must be an object, got ${typeof bracket}`);
+  }
+
+  const legs = [
+    ['stopLoss', 'stopDistance'],
+    ['takeProfit', 'targetDistance'],
+  ];
+
+  for (const [priceKey, distanceKey] of legs) {
+    const price = bracket[priceKey];
+    const distance = bracket[distanceKey];
+
+    if (price != null && distance != null) {
+      throw new Error(
+        `placeOrder: give ${priceKey} or ${distanceKey}, not both — `
+        + 'a level and an offset to the same level cannot both be the answer',
+      );
+    }
+    if (price != null && !Number.isFinite(price)) {
+      throw new Error(`placeOrder: ${priceKey} must be a finite number, got ${price}`);
+    }
+    if (distance != null && !(distance > 0)) {
+      throw new Error(`placeOrder: ${distanceKey} must be a positive number, got ${distance}`);
     }
   }
 }

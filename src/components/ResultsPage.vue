@@ -10,12 +10,21 @@
  * Comparison is in percent, never in currency. Two runs started with different
  * balances are not comparable in money: the one that began with more will look
  * better at the same skill. Percent asks the question everyone actually means.
+ *
+ * The arithmetic of comparing lives in shared/analysis/compare.js, and the
+ * reason it does is in that file's header: a stored curve holds one point per
+ * balance change, so laying two of them across the same width puts the ninth
+ * trade of one run above the three hundredth of the other. Here the axis is
+ * time and nothing else.
  */
 import { computed, onMounted, ref } from 'vue';
 import ConfirmModal from './ConfirmModal.vue';
 import TradeReview from './TradeReview.vue';
 import { analyseRun } from '../../shared/analysis/runAnalysis.js';
 import { describeSettings } from '../../shared/analysis/runSettings.js';
+import {
+  comparability, compareCurves, metricTable, settingsDiff, valuesAt,
+} from '../../shared/analysis/compare.js';
 import { setError } from '../stores/session.js';
 
 const runs = ref([]);
@@ -137,55 +146,110 @@ async function saveNote(id, note) {
 
 /* ─── Curve geometry ──────────────────────────────────────────────────────
  * The viewBox is a fixed 1000×280 and the path is scaled into it, so the SVG
- * stretches with the panel without any measuring. */
+ * stretches with the panel without any measuring.
+ *
+ * The horizontal axis is time. It used to be the position of a point in its
+ * own list, which is only the same thing when every run has the same number of
+ * points — and a condensed curve never does. */
 const W = 1000;
 const H = 280;
 const PAD = 6;
 
-/** One run's curve as {points, last}, in percent of its own starting balance. */
-function curveOf(run) {
-  return analyseRun(run).equityPct;
+/** What the curve shows. Both are read off the same stored points. */
+const MEASURES = [
+  { id: 'equity', label: 'Equity' },
+  { id: 'drawdown', label: 'Drawdown' },
+];
+/** How its axis is read; only a comparison has anything to choose between. */
+const AXES = [
+  { id: 'calendar', label: 'Calendar' },
+  { id: 'aligned', label: 'Aligned starts' },
+];
+
+const measure = ref('equity');
+const axisMode = ref('calendar');
+/** Where the pointer sits on the axis, in the domain's units, or null. */
+const hoverX = ref(null);
+
+/** The runs on screen: the several being compared, or the single one picked. */
+const shownRuns = computed(() => (
+  comparing.value ? comparedRuns.value : (detail.value ? [detail.value] : [])
+));
+
+const compared = computed(() => compareCurves(shownRuns.value, {
+  mode: axisMode.value,
+  measure: measure.value,
+}));
+
+function toX(x) {
+  const { minX, maxX } = compared.value;
+  return PAD + ((x - minX) / (maxX - minX)) * (W - PAD * 2);
 }
 
-/** The value range covering every curve, so compared runs share one scale. */
-const scale = computed(() => {
-  const curves = comparing.value
-    ? comparedRuns.value.map(curveOf)
-    : (analysis.value ? [analysis.value.equityPct] : []);
+function toY(value) {
+  const { minY, maxY } = compared.value;
+  return PAD + (1 - (value - minY) / (maxY - minY)) * (H - PAD * 2);
+}
 
-  let min = 0;   // zero is always in view: it is the line that means breakeven
-  let max = 0;
-  let count = 0;
-  for (const c of curves) {
-    for (const p of c) {
-      if (p.value < min) min = p.value;
-      if (p.value > max) max = p.value;
-    }
-    count = Math.max(count, c.length);
+/**
+ * One run's curve as a stepped path.
+ *
+ * Stepped rather than sloped, because that is what the account did: between
+ * two balance changes it sat at the older one. A straight line between the
+ * points would draw a climb through days that had no trade in them, and the
+ * readout under the pointer — which carries the last value forward — would
+ * then disagree with the line above it.
+ */
+function pathFor(series) {
+  const points = series.points;
+  if (points.length === 0) return '';
+
+  let d = `M${toX(points[0].x).toFixed(1)},${toY(points[0].value).toFixed(1)}`;
+  for (let i = 1; i < points.length; i++) {
+    d += ` H${toX(points[i].x).toFixed(1)} V${toY(points[i].value).toFixed(1)}`;
   }
-  // A flat run would divide by zero; give it a band to sit in the middle of.
-  if (max - min < 1e-9) { min -= 1; max += 1; }
-  return { min, max, count };
-});
-
-function pathFor(curve) {
-  const { min, max } = scale.value;
-  if (curve.length === 0) return '';
-  const span = max - min;
-  const stepX = curve.length > 1 ? (W - PAD * 2) / (curve.length - 1) : 0;
-
-  return curve.map((p, i) => {
-    const x = PAD + i * stepX;
-    const y = PAD + (1 - (p.value - min) / span) * (H - PAD * 2);
-    return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(' ');
+  return d;
 }
 
 /** Where zero sits vertically — the line a run has to stay above to matter. */
-const zeroY = computed(() => {
-  const { min, max } = scale.value;
-  return PAD + (1 - (0 - min) / (max - min)) * (H - PAD * 2);
+const zeroY = computed(() => toY(0));
+
+/** The pointer's own x in view units, for the crosshair. */
+const hoverPx = computed(() => (hoverX.value == null ? null : toX(hoverX.value)));
+
+/** Each run's value where the pointer is, by run id. */
+const readout = computed(() => {
+  if (hoverX.value == null) return null;
+  return new Map(valuesAt(compared.value, hoverX.value).map((v) => [v.id, v.value]));
 });
+
+function readAt(id) {
+  const value = readout.value?.get(id);
+  return value == null ? '—' : `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
+}
+
+function onCurveMove(event) {
+  const rect = event.currentTarget.getBoundingClientRect();
+  if (rect.width === 0) return;
+  const frac = Math.min(Math.max((event.clientX - rect.left) / rect.width, 0), 1);
+  const { minX, maxX } = compared.value;
+  hoverX.value = minX + frac * (maxX - minX);
+}
+
+/* ─── Comparison ────────────────────────────────────────────────────────── */
+
+const notes = computed(() => comparability(shownRuns.value));
+const metrics = computed(() => metricTable(shownRuns.value));
+const diffRows = computed(() => settingsDiff(shownRuns.value, catalog.value));
+const diffCount = computed(() => diffRows.value.filter((r) => r.differs).length);
+
+/* Settings a comparison shares are noise in a diff — twenty identical rows to
+ * read past before the one that changed. They stay one click away rather than
+ * gone, because "nothing else differs" is itself worth being able to check. */
+const onlyDiffs = ref(true);
+const shownDiffRows = computed(() => (
+  onlyDiffs.value ? diffRows.value.filter((r) => r.differs) : diffRows.value
+));
 
 const LINE_COLORS = ['accent', 'ind-1', 'ind-2', 'ind-3', 'ind-5'];
 
@@ -196,6 +260,22 @@ const money = (v) => (v == null ? '—' : v.toLocaleString(undefined, {
 }));
 const day = (ms) => new Date(ms).toISOString().slice(0, 10);
 const hours = (ms) => (ms == null ? '—' : `${(ms / 3_600_000).toFixed(1)}h`);
+
+/** A figure rendered the way its own row asks for; see COMPARE_METRICS. */
+function fmt(format, value) {
+  if (value == null || !Number.isFinite(value)) return '—';
+  if (format === 'percent') return pct(value);
+  if (format === 'money') return money(value);
+  if (format === 'ratio') return value.toFixed(2);
+  if (format === 'duration') return hours(value);
+  return String(value);
+}
+
+/* A calendar axis is dated; an aligned one counts from each run's own start,
+ * where a date would be a different day for every line on the chart. */
+const axisLabel = (x) => (axisMode.value === 'aligned'
+  ? `${Math.round(x / 86_400_000)}d`
+  : day(x));
 </script>
 
 <template>
@@ -273,49 +353,151 @@ const hours = (ms) => (ms == null ? '—' : `${(ms / 3_600_000).toFixed(1)}h`);
         <!-- The trades themselves, taking the whole panel. -->
         <TradeReview v-if="showTrades" :run="detail" />
 
-        <!-- Equity, rebased so every run starts at zero. -->
+        <!-- Rebased so every run starts at zero, on a time axis so runs with
+             different trade counts still line up by when things happened. -->
         <figure v-if="!showTrades" class="chart">
-          <figcaption class="k-mono-label faint">Equity from zero, percent of starting balance</figcaption>
-          <svg :viewBox="`0 0 ${W} ${H}`" preserveAspectRatio="none" class="curve">
+          <figcaption class="curve-head">
+            <span class="k-mono-label faint">
+              {{ measure === 'equity'
+                ? 'Equity from zero, percent of starting balance'
+                : 'Below the high-water mark, percent' }}
+            </span>
+            <span class="curve-controls">
+              <span class="modes">
+                <button
+                  v-for="m in MEASURES"
+                  :key="m.id"
+                  class="mode-btn"
+                  :class="{ 'is-active': measure === m.id }"
+                  @click="measure = m.id"
+                >{{ m.label }}</button>
+              </span>
+              <span v-if="comparing" class="modes">
+                <button
+                  v-for="a in AXES"
+                  :key="a.id"
+                  class="mode-btn"
+                  :class="{ 'is-active': axisMode === a.id }"
+                  @click="axisMode = a.id"
+                >{{ a.label }}</button>
+              </span>
+            </span>
+          </figcaption>
+
+          <svg
+            :viewBox="`0 0 ${W} ${H}`"
+            preserveAspectRatio="none"
+            class="curve"
+            @pointermove="onCurveMove"
+            @pointerleave="hoverX = null"
+          >
             <line :x1="0" :x2="W" :y1="zeroY" :y2="zeroY" class="zero" />
+            <line
+              v-if="hoverPx !== null"
+              :x1="hoverPx"
+              :x2="hoverPx"
+              :y1="0"
+              :y2="H"
+              class="hover-line"
+            />
             <path
-              v-for="(run, i) in (comparing ? comparedRuns : (detail ? [detail] : []))"
-              :key="run.id"
-              :d="pathFor(curveOf(run))"
+              v-for="(s, i) in compared.series"
+              :key="s.id"
+              :d="pathFor(s)"
               class="line"
               :style="{ stroke: `var(--${LINE_COLORS[i % LINE_COLORS.length]})` }"
             />
           </svg>
-          <ul v-if="comparing" class="legend">
-            <li v-for="(run, i) in comparedRuns" :key="run.id">
-              <span class="dot" :style="{ background: `var(--${LINE_COLORS[i % LINE_COLORS.length]})` }"></span>
+
+          <div class="axis k-mono-label faint">
+            <span>{{ axisLabel(compared.minX) }}</span>
+            <span v-if="hoverX !== null" class="axis-cursor">{{ axisLabel(hoverX) }}</span>
+            <span>{{ axisLabel(compared.maxX) }}</span>
+          </div>
+
+          <ul class="legend">
+            <li v-for="(s, i) in compared.series" :key="s.id">
+              <span
+                class="dot"
+                :style="{ background: `var(--${LINE_COLORS[i % LINE_COLORS.length]})` }"
+              ></span>
               <span class="k-mono-label">
-                {{ run.strategyName }} · {{ run.timeframe }} · {{ pct(run.stats.returnPct) }}
+                {{ s.label }} · {{ shownRuns[i].symbol }} {{ shownRuns[i].timeframe }} ·
+                {{ pct(shownRuns[i].stats.returnPct) }}
               </span>
+              <span v-if="readout" class="k-mono-label at-cursor">{{ readAt(s.id) }}</span>
             </li>
           </ul>
         </figure>
 
-        <!-- Comparison: one row per run, the figures side by side. -->
-        <table v-if="comparing" class="table">
-          <thead>
-            <tr>
-              <th>Run</th><th>Return</th><th>Trades</th><th>Win rate</th>
-              <th>Max DD</th><th>PF</th><th>Fees</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="run in comparedRuns" :key="run.id">
-              <td>{{ run.strategyName }} · {{ run.symbol }} {{ run.timeframe }}</td>
-              <td :class="run.stats.netPnl >= 0 ? 'is-up' : 'is-down'">{{ pct(run.stats.returnPct) }}</td>
-              <td>{{ run.stats.tradeCount }}</td>
-              <td>{{ pct(run.stats.winRate) }}</td>
-              <td>{{ pct(run.stats.maxDrawdownPct) }}</td>
-              <td>{{ run.stats.profitFactor == null ? '—' : run.stats.profitFactor.toFixed(2) }}</td>
-              <td>{{ money(run.stats.feesPaid) }}</td>
-            </tr>
-          </tbody>
-        </table>
+        <template v-if="comparing">
+          <!-- What the compared runs disagree about. None of it stops the
+               comparison; all of it changes how the numbers read. -->
+          <ul v-if="notes.length > 0" class="notes">
+            <li v-for="n in notes" :key="n.key" class="k-mono-label">{{ n.message }}</li>
+          </ul>
+
+          <!-- Figures as rows and runs as columns: a run is a column of numbers
+               to read down, and the row is where they meet. The other way round
+               it runs off the panel as soon as there is a third run. -->
+          <table class="table compare">
+            <thead>
+              <tr>
+                <th>Figure</th>
+                <th v-for="(run, i) in shownRuns" :key="run.id">
+                  <span
+                    class="dot"
+                    :style="{ background: `var(--${LINE_COLORS[i % LINE_COLORS.length]})` }"
+                  ></span>
+                  {{ run.strategyName }}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in metrics" :key="row.key">
+                <td class="row-name">{{ row.label }}</td>
+                <td
+                  v-for="(cell, i) in row.cells"
+                  :key="i"
+                  :class="{ 'is-best': cell.best }"
+                >{{ fmt(row.format, cell.value) }}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- The question a comparison is actually asking: what did I change? -->
+          <section class="settings">
+            <div class="diff-head">
+              <span class="k-eyebrow">Settings</span>
+              <button class="mode-btn" @click="onlyDiffs = !onlyDiffs">
+                {{ onlyDiffs
+                  ? `${diffCount} of ${diffRows.length} differ — show all`
+                  : 'Show only what differs' }}
+              </button>
+            </div>
+
+            <p v-if="shownDiffRows.length === 0" class="k-mono-label faint">
+              These runs were configured identically.
+            </p>
+
+            <table v-else class="table compare">
+              <tbody>
+                <tr
+                  v-for="row in shownDiffRows"
+                  :key="row.key"
+                  :class="{ 'is-diff': row.differs }"
+                >
+                  <td class="row-name">{{ row.label }}</td>
+                  <td
+                    v-for="(cell, i) in row.cells"
+                    :key="i"
+                    :class="{ faint: cell.missing }"
+                  >{{ cell.text }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+        </template>
 
         <template v-else-if="detail && analysis && !showTrades">
           <dl class="figures">
@@ -515,7 +697,55 @@ const hours = (ms) => (ms == null ? '—' : `${(ms / 3_600_000).toFixed(1)}h`);
 
 .legend { display: flex; flex-wrap: wrap; gap: 12px; list-style: none; margin: 0; padding: 0; }
 .legend li { display: flex; align-items: center; gap: 5px; }
-.dot { width: 8px; height: 8px; border-radius: 2px; }
+.dot { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+
+.curve-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.curve-controls { display: flex; gap: 6px; }
+
+/* Follows the pointer across the curve. Dashed so it never reads as a level
+   the account actually touched. */
+.hover-line {
+  stroke: var(--chart-cross, var(--brd));
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  vector-effect: non-scaling-stroke;
+}
+.axis { display: flex; justify-content: space-between; gap: 8px; }
+.axis-cursor { color: var(--txt); }
+.at-cursor {
+  min-width: 62px;
+  text-align: right;
+  color: var(--txt);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Reasons the compared runs are not answering quite the same question. A
+   caution rather than an error: none of them stops the comparison. */
+.notes {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  list-style: none;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--accent-brd);
+  border-radius: var(--radius-sm);
+  background: var(--glass);
+}
+.notes li { color: var(--sec); }
+
+.compare td, .compare th { text-align: right; }
+.compare td:first-child, .compare th:first-child { text-align: left; }
+.compare th { white-space: nowrap; }
+.compare th .dot { display: inline-block; margin-right: 5px; vertical-align: middle; }
+.row-name { color: var(--sec); white-space: nowrap; }
+/* The best cell of its row, in the direction that row is read — see
+   COMPARE_METRICS.better, which is why the deepest drawdown is not it. */
+.is-best { color: var(--accent); font-weight: 600; }
+.is-diff td { background: var(--accent-bg); }
+
+.diff-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 
 .figures {
   display: grid;

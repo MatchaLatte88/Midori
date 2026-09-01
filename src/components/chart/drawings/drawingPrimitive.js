@@ -47,6 +47,10 @@ function fillRectAlpha(ctx, color, alpha, x, y, width, height) {
   ctx.globalAlpha = previous;
 }
 
+/* The midpoint of a gap, dashed finer than any stroke the bar can hand out so
+ * it never reads as one of the two edges. */
+const MIDPOINT_DASH = [2, 4];
+
 class DrawingRenderer {
   constructor(source) {
     this._source = source;
@@ -88,10 +92,10 @@ class DrawingRenderer {
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
     /* Selection adds a pixel rather than doubling. Doubling reads fine at the
-     * old fixed width of 1, but once the width is the user's own choice a
-     * selected 4px line would jump to 8 and swamp the candles under it. At
-     * width 1 both rules give the same 2px, so nothing that existed before
-     * this setting looks different. */
+     * old fixed width of 1, but once the width is the user's own choice the
+     * thickest stroke would double along with it and swamp the candles under
+     * it. At width 1 both rules give the same 2px, so nothing that existed
+     * before this setting looks different. */
     ctx.lineWidth = drawing.width + (selected ? 1 : 0);
     /* The stroke pattern applies to the plain line shapes. Fib, measure,
      * range profile and the position block set their own below: their dashes
@@ -135,6 +139,10 @@ class DrawingRenderer {
           fillRectAlpha(ctx, color, 0.12, x, y, w, h);
           ctx.strokeRect(x, y, w, h);
         }
+        break;
+
+      case 'fvg':
+        if (b) this._fvg(ctx, a, b, color);
         break;
 
       /* Only the span is drawn here. The histogram inside it is a separate
@@ -327,6 +335,46 @@ class DrawingRenderer {
     const rr = stats.rr == null ? '—' : stats.rr.toFixed(2);
 
     label(yEntry, targetAbove ? 'below' : 'above', `${name}   R:R ${rr}`, c.text);
+  }
+
+  /**
+   * A marked fair value gap.
+   *
+   * Painted the way the FVG indicator paints the same zone — body filled, both
+   * edges solid because those are the two prices anyone actually trades
+   * against, midpoint dashed — so a gap the user pinned and a gap the indicator
+   * found read as the same object rather than as a rectangle that happens to
+   * sit there. Nothing is written on it: a gap is usually a few pixels tall and
+   * there are a lot of them, so a label per box would cover the very candles
+   * the zone is there to be read against.
+   *
+   * The two edges take whatever stroke the drawing was given, so the style bar
+   * works on a gap the way it works on a line. The midpoint keeps its own dash:
+   * it is a different statement from the edges — where consequent encroachment
+   * sits, not where price stopped — and one that has to stay tellable apart
+   * from them at every setting.
+   */
+  _fvg(ctx, a, b, color) {
+    const x = Math.min(a.x, b.x);
+    const y = Math.min(a.y, b.y);
+    const w = Math.abs(b.x - a.x);
+    /* A gap thinner than a pixel is still a gap; without a floor it would
+     * silently vanish on a zoomed-out chart. Same floor, and the same reason,
+     * as in the indicator's own primitive. */
+    const h = Math.max(1, Math.abs(b.y - a.y));
+
+    fillRectAlpha(ctx, color, 0.13, x, y, w, h);
+
+    // Half-pixel offsets keep a 1px line on the pixel, not across two. The
+    // dash is the caller's — see the note above.
+    this._line(ctx, x, y + 0.5, x + w, y + 0.5);
+    this._line(ctx, x, y + h - 0.5, x + w, y + h - 0.5);
+
+    // Any thinner and the midpoint has nowhere to sit that is not already a line.
+    if (h > 6) {
+      ctx.setLineDash(MIDPOINT_DASH);
+      this._line(ctx, x, y + h / 2, x + w, y + h / 2);
+    }
   }
 
   _measure(ctx, drawing, a, b) {

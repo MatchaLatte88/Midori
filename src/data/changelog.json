@@ -1,6 +1,48 @@
 {
   "releases": [
     {
+      "version": "v0.1.9-dev",
+      "date": "Sep 2026",
+      "changes": [
+        {
+          "type": "feat",
+          "text": "A Replay tab that steps through history one bar at a time and lets you trade it by hand. Pick a date and a starting balance; space plays and pauses, the right arrow takes one bar, and anything after the playhead does not exist for the session - the indicators only ever see the bars that have been revealed"
+        },
+        {
+          "type": "feat",
+          "text": "Your orders go through the same engine a backtest does: they fill on the bar after the one you are looking at, at the same spread, slippage and commission, and a bar that touched both your stop and your target is decided by walking the minutes inside it. The size follows from your risk and your stop, exactly as it does for a strategy, so a trade taken by hand and one taken by a bot are the same size"
+        },
+        {
+          "type": "feat",
+          "text": "Draw the trade and send it. Pull entry, stop and target with the position tool, right-click the block, and it becomes an order - either waiting on the drawn entry, or at market now with the drawn distances measured from the actual fill. Your drawing is replaced by the live position the moment the entry fills"
+        },
+        {
+          "type": "feat",
+          "text": "The open position sits on the chart with what it is worth right now against the right edge, in R where there is a stop to measure against. Its stop and target can be dragged straight on the chart - the drag is a preview, and only letting go replaces the protection. A level dropped on the wrong side of the last price is refused, because it would close the position at market rather than protect it"
+        },
+        {
+          "type": "feat",
+          "text": "The chart no longer jumps when a bar is revealed. Set the zoom and put the newest candle where you want it, and Step and Play leave it exactly there; scroll back into history and it stays on the bars you are reading"
+        },
+        {
+          "type": "feat",
+          "text": "Save session stores a replay as a run in the same library the backtests land in, so an afternoon traded by hand can be put next to what a strategy did over the same bars"
+        },
+        {
+          "type": "feat",
+          "text": "Compare runs in the Results tab: ctrl-click several and their curves are laid over one timeline as a percentage of each starting balance - by calendar, or with their starts aligned when they come from different periods. Equity or drawdown, with a readout under the pointer, the metrics side by side with the best cell in each row marked, and a settings diff showing only what actually differs"
+        },
+        {
+          "type": "feat",
+          "text": "A gap tool on the drawing toolbar: click an imbalance and it is marked, drawn the way the indicator draws one. A run of stacked gaps can be read as the single zone it is - set how wide a traded strip may be before it counts as a real separation, and neighbouring gaps below that merge into one"
+        },
+        {
+          "type": "style",
+          "text": "Line width and dash are now per drawing, chosen once and kept for the next one you draw"
+        }
+      ]
+    },
+    {
       "version": "v0.1.8-dev",
       "date": "Sep 2026",
       "changes": [

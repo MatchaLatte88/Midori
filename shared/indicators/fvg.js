@@ -75,6 +75,35 @@
  * failed probe, the other is acceptance. `close` is the usual reading and the
  * default; `wick` is there for anyone who trades the probe.
  *
+ * Stacked gaps
+ * ------------
+ * One impulse rarely leaves one gap. A move that runs for five bars leaves a
+ * gap under almost every one of them, separated by nothing but the thin strips
+ * the wicks did trade. Read one at a time those are five zones; read the way a
+ * trader reads them they are one imbalance with a few pinholes in it.
+ *
+ * `mergeWick` is how wide a traded strip may be before it counts as a real
+ * separation. Below it, neighbouring gaps of the same direction become a single
+ * zone spanning all of them.
+ *
+ * Neighbouring in time as well as in price, and that half is not optional. Two
+ * gaps that merely happen to sit at the same prices are not one imbalance, they
+ * are two, months apart. Measured on a month of BTC 15m: joining by price alone
+ * turned 711 gaps into 81 zones, the widest running 2545 bars — one box over
+ * most of the chart. Requiring the bar spans to overlap gives 613 zones, the
+ * widest 6 bars, which is the picture the eye already sees. So a run breaks as
+ * soon as one bar in it leaves no gap of its own. Allowing a bar or two of
+ * slack was measured too and buys almost nothing — 85 merges against 83 — which
+ * is not worth a second parameter.
+ *
+ * Merging happens before the size filter, never after: a run of thin gaps that
+ * adds up to a tradable zone must not be thrown away one gap at a time before
+ * anyone has looked at what they add up to.
+ *
+ * An inverted gap merges the gaps it is built from, so a stacked zone inverts
+ * as a whole — broken when price closes past the outer edge of the run, not
+ * past the edge of whichever sliver it crossed first.
+ *
  * What the parameters do
  * ----------------------
  * `minSize` and `lookback` narrow what is reported without changing what a zone
@@ -94,7 +123,10 @@
 
 const MITIGATIONS = ['touch', 'ce', 'full', 'break'];
 const INVERSIONS = ['close', 'wick'];
-const SIZE_UNITS = ['percent', 'points'];
+/* Exported because the FVG drawing tool has a size control of its own, and a
+ * control that could offer a unit this file rejects would be a control that
+ * throws on click. */
+export const SIZE_UNITS = ['percent', 'points'];
 
 /**
  * Fair value gaps, with the bar that filled each one.
@@ -111,10 +143,11 @@ const SIZE_UNITS = ['percent', 'points'];
 export function detectFairValueGaps(bars, params = {}) {
   const {
     mitigation = 'full', minSize = 0, minSizeUnit = 'percent', show = 'open', lookback = 0,
+    mergeWick = 0,
   } = params;
   check(bars, 'detectFairValueGaps', mitigation, minSizeUnit);
 
-  const zones = findGaps(bars, minSize, minSizeUnit);
+  const zones = gapsFor(bars, { minSize, minSizeUnit, mergeWick });
   applyMitigation(bars, zones, mitigation);
   return { zones: report(zones, bars.length, show, lookback) };
 }
@@ -134,14 +167,14 @@ export function detectInvertedFairValueGaps(bars, params = {}) {
      * inversion is an event with a lifetime, not a standing level. Must stay
      * in step with IFVG_PARAMS below; a test holds the two together. */
     mitigation = 'break', minSize = 0, minSizeUnit = 'percent', show = 'all',
-    lookback = 0, inversion = 'close',
+    lookback = 0, inversion = 'close', mergeWick = 0,
   } = params;
   check(bars, 'detectInvertedFairValueGaps', mitigation, minSizeUnit);
   if (!INVERSIONS.includes(inversion)) {
     throw new Error(`detectInvertedFairValueGaps: unknown inversion "${inversion}"`);
   }
 
-  const zones = invert(bars, findGaps(bars, minSize, minSizeUnit), inversion);
+  const zones = invert(bars, gapsFor(bars, { minSize, minSizeUnit, mergeWick }), inversion);
   applyMitigation(bars, zones, mitigation);
   return { zones: report(zones, bars.length, show, lookback) };
 }
@@ -160,7 +193,7 @@ function check(bars, name, mitigation, minSizeUnit) {
  * Every three-bar gap in the array, in the order they formed, with no opinion
  * about what happened to them afterwards.
  */
-function findGaps(bars, minSize, minSizeUnit) {
+function findGaps(bars) {
   const gaps = [];
 
   for (let i = 2; i < bars.length; i++) {
@@ -182,8 +215,6 @@ function findGaps(bars, minSize, minSizeUnit) {
       continue;
     }
 
-    if (minSize > 0 && !bigEnough(top, bottom, minSize, minSizeUnit)) continue;
-
     gaps.push({
       direction,
       top,
@@ -199,6 +230,88 @@ function findGaps(bars, minSize, minSizeUnit) {
   }
 
   return gaps;
+}
+
+/**
+ * The gaps both detectors work from: found, stacked ones joined up, then
+ * narrowed by size — in that order. Filtering first would drop the slivers a
+ * run is made of before anyone had looked at what they add up to.
+ */
+function gapsFor(bars, { minSize, minSizeUnit, mergeWick }) {
+  const gaps = mergeGaps(findGaps(bars), mergeWick, minSizeUnit);
+  if (!(minSize > 0)) return gaps;
+  return gaps.filter((g) => bigEnough(g.top, g.bottom, minSize, minSizeUnit));
+}
+
+/**
+ * Joins runs of gaps separated only by strips too thin to count as a
+ * separation. Zones that do not merge come back untouched.
+ *
+ * A run is per direction and has to be unbroken in time: a gap can only extend
+ * the run whose bars its own overlap. The moment a bar leaves no gap, the run
+ * is finished and the next gap starts a new one — the header has the numbers
+ * for what happens without that rule.
+ *
+ * The merged zone spans every gap in the run, starts where the first one starts
+ * and is confirmed where the last one is confirmed. Confirmation has to be the
+ * latest of them: nothing could know the extent of the run before its last gap
+ * existed, and a strategy handed the earlier index would trade a zone that had
+ * not finished forming.
+ */
+function mergeGaps(gaps, mergeWick, unit) {
+  if (!(mergeWick > 0)) return gaps;
+
+  const out = [];
+  // The run each direction is currently building, or null.
+  const runs = { bull: null, bear: null };
+
+  for (const gap of gaps) {
+    const run = runs[gap.direction];
+    const strip = run === null ? null : stripBetween(run, gap);
+    // Overlapping bar spans, and a strip between them thinner than the setting.
+    const joins = run !== null
+      && gap.startIndex <= run.index
+      && !bigEnough(strip.top, strip.bottom, mergeWick, unit);
+
+    if (!joins) {
+      // A copy: the caller's gaps are not ours to grow.
+      const fresh = { ...gap };
+      runs[gap.direction] = fresh;
+      out.push(fresh);
+      continue;
+    }
+
+    run.top = Math.max(run.top, gap.top);
+    run.bottom = Math.min(run.bottom, gap.bottom);
+    run.size = run.top - run.bottom;
+    if (gap.startIndex < run.startIndex) {
+      run.startIndex = gap.startIndex;
+      run.startTime = gap.startTime;
+    }
+    if (gap.index > run.index) {
+      run.index = gap.index;
+      run.time = gap.time;
+    }
+  }
+
+  /* Runs of the two directions interleave, so extending one can leave the array
+   * out of order — and both applyMitigation and invert walk it expecting to
+   * meet zones in the order they were confirmed. */
+  return out.sort((a, b) => a.index - b.index);
+}
+
+/**
+ * The traded strip between two zones: the stretch of price that lies between
+ * them and did therefore change hands. Empty when they overlap or touch, since
+ * then there is nothing between them at all.
+ */
+function stripBetween(a, b) {
+  if (a.bottom > b.top) return { top: a.bottom, bottom: b.top };
+  if (b.bottom > a.top) return { top: b.bottom, bottom: a.top };
+  /* A percentage still needs a real price to measure against, so an empty strip
+   * sits at the edge the two share rather than at zero. */
+  const price = Math.max(a.bottom, b.bottom);
+  return { top: price, bottom: price };
 }
 
 /**
@@ -403,13 +516,30 @@ const commonParams = [
     label: 'Measured in',
     type: 'select',
     default: 'percent',
-    hint: 'How to read the minimum size. Percent measures against the price level '
-      + 'the zone sits at, so it keeps meaning the same as price moves; points measure '
-      + 'the raw distance in whatever the instrument is quoted in.',
+    hint: 'How to read the two sizes it sits between. Percent measures against the '
+      + 'price level the zone sits at, so it keeps meaning the same as price moves; '
+      + 'points measure the raw distance in whatever the instrument is quoted in.',
     options: [
       { value: 'percent', label: 'Percent' },
       { value: 'points', label: 'Points' },
     ],
+  },
+  /* Zero is off here too, which does cost one reading — "join only gaps that
+   * already touch". That case is worth 1 merge in 711 on a month of BTC 15m,
+   * and anyone who wants it can ask for a tiny value. Cheaper than a second
+   * control whose only job is to tell off apart from zero. */
+  {
+    key: 'mergeWick',
+    label: 'Merge across',
+    type: 'number',
+    default: 0,
+    min: 0,
+    max: 1e6,
+    step: 0.01,
+    hint: 'Treat gaps stacked on top of each other as one zone, as long as the '
+      + 'traded strip between them is no wider than this and their bars run '
+      + 'together. Read in the same unit as the minimum size. 0 keeps every gap '
+      + 'separate.',
   },
   /* Zero means "no limit" on both of these — the setting is off, rather than
    * set to something. Anything else would need a second control to say so. */

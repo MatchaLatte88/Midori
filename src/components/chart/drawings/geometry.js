@@ -126,6 +126,8 @@ export function hitTest(type, pts, at, size) {
       return b ? distanceToRay(at.x, at.y, a.x, a.y, b.x, b.y) <= HIT_TOLERANCE : false;
 
     case 'rectangle':
+    // A marked fair value gap is a rectangle in every way that matters here.
+    case 'fvg':
     /* A range profile is grabbed over its whole span too. Its box is drawn to
      * the height of the data rather than to the anchors, but the anchors are
      * what the pointer tests against — they are where the handles are. */
@@ -189,6 +191,9 @@ export function pointsRequired(type) {
     case 'fib':
     case 'measure':
     case 'rangeprofile':
+    // Top-left and bottom-right, like any other box — even though the gesture
+    // that makes one is a single click. See gesturePoints.
+    case 'fvg':
       return 2;
     case 'position':
     // 'long' and 'short' are the pre-0.1.1 names for the same shape; kept so
@@ -249,8 +254,17 @@ export function buildFromGesture(type, start, end) {
   ];
 }
 
-/** How many points the drag itself collects, before buildFromGesture. */
+/**
+ * How many points the drag itself collects, before buildFromGesture.
+ *
+ * A fair value gap is picked rather than drawn: one click, and the gap under it
+ * supplies both anchors. So this is the one type where the gesture collects
+ * fewer points than the drawing keeps and buildFromGesture cannot bridge the
+ * two — the answer depends on the bars, which is not something pure geometry
+ * can see. useDrawings builds those anchors instead.
+ */
 export function gesturePoints(type) {
+  if (type === 'fvg') return 1;
   return pointsRequired(type) === 3 ? 2 : pointsRequired(type);
 }
 

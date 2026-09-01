@@ -63,7 +63,7 @@ export function selectSymbol(symbol) {
   state.symbol = symbol;
 }
 
-export const VIEWS = ['chart', 'backtest', 'sweep', 'results'];
+export const VIEWS = ['chart', 'replay', 'backtest', 'sweep', 'results'];
 
 export function setView(view) {
   if (!VIEWS.includes(view)) throw new Error(`Unknown view "${view}". Known: ${VIEWS.join(', ')}`);

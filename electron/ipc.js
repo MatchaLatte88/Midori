@@ -176,6 +176,48 @@ export function registerIpc() {
     annotateRun(runsDir(), requireString(id, 'id'), note)
   ));
 
+  /* ─── Replay ────────────────────────────────────────────────────────── */
+
+  /* A replay is played out in the renderer — a click has to become an order
+   * and a redrawn chart in the same frame, which a round trip through here
+   * cannot do. The engine it runs on is the same one; see
+   * shared/engine/replaySession.js for why that class lives in shared/.
+   *
+   * So only the finished session crosses the bridge, and it goes into the same
+   * store a backtest does. That is the whole point of storing it: a run traded
+   * by hand and a run produced by a strategy end up in one library, on one
+   * results page, comparable against each other.
+   */
+  ipcMain.handle('replay:save', async (_e, request) => {
+    const { symbol, timeframe, note = '', ...result } = request ?? {};
+
+    requireString(symbol, 'symbol');
+    requireTimeframe(timeframe);
+    if (!result.stats || !Array.isArray(result.trades)) {
+      throw new Error('replay:save: the session has no result to store');
+    }
+    if (result.trades.length === 0) {
+      throw new Error('replay:save: the session took no trades');
+    }
+    if (!Number.isFinite(result.from) || !Number.isFinite(result.to)) {
+      throw new Error('replay:save: the session has no range');
+    }
+
+    return saveRun(runsDir(), {
+      ...result,
+      strategy: 'replay',
+      strategyName: 'Manual replay',
+      /* Deliberately empty. A replay has no settings that held for the whole
+       * session — the risk on each trade was decided at the moment it was
+       * taken — and storing one of them would be a claim the session cannot
+       * support. The trades carry what actually happened. */
+      params: {},
+      symbol,
+      timeframe,
+      note: typeof note === 'string' ? note.slice(0, 2000) : '',
+    });
+  });
+
   /* ─── Sweeps ────────────────────────────────────────────────────────── */
 
   /* The sweep itself runs on a worker thread — see sweepManager. This handler

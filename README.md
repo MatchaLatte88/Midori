@@ -59,6 +59,8 @@ laufen lassen, committen und pushen — in einem Schritt.
 3. Symbol in der **Local library** anklicken, oben den Timeframe wählen. Nach links scrollen
    lädt ältere Bars nach.
 4. Rechts das **Volume Profile** einschalten oder über **Add** einen Indikator auflegen.
+5. Oben **Replay**, um denselben Chart Bar für Bar von Hand durchzuhandeln, oder **Backtest**,
+   um eine Strategie darüber laufen zu lassen.
 
 Ein Monat 1m-Daten sind etwa 44.600 Bars und rund 2 MB; ein Jahr lädt in ein bis zwei
 Minuten.
@@ -182,6 +184,54 @@ An echten Daten (BTCUSDT, 1h, drei Monate, enge Klammern) entschied das 103 von 
 anders — 6 Prozentpunkte Trefferquote. Wo keine feineren Daten existieren, gilt die
 pessimistische Regel, und jeder Fill vermerkt in `resolution`, wie er zustande kam.
 
+## Replay
+
+**Replay** oben in der Leiste: Startdatum und Startkapital wählen, dann geht es Bar für Bar
+vorwärts — Leertaste spielt und pausiert, Pfeil rechts geht einen Schritt, 1 bis 30 Bars pro
+Sekunde. Alles vor dem Abspielkopf steht zum Lesen da, alles danach existiert für die Sitzung
+nicht: Die Indikatoren rechnen nur über die aufgedeckten Bars, weil sie die anderen gar nicht
+bekommen.
+
+Gehandelt wird links im Ticket: Market, Limit oder Stop, Stop und Ziel per Klick vom Chart
+(⌖ arme das Feld, dann auf den Preis klicken). Die **Größe folgt aus dem Risiko** — dieselbe
+Rechnung wie bei den Strategien, also ist ein von Hand genommener Trade bei gleichem Stop
+genauso groß wie ein vom Bot genommener. Ohne Stop gibt es keine definierte Risikogröße, und
+der Knopf bleibt aus.
+
+**Oder du zeichnest den Trade und schickst ihn ab.** Mit dem Positionswerkzeug Entry, Stop und
+Ziel ziehen, dann **Rechtsklick auf den Block**:
+
+- **Pending order** — wartet auf dem gezeichneten Entry, mit den gezeichneten Leveln. Ob Limit
+  oder Stop, ergibt sich daraus, wo der Entry zum aktuellen Preis liegt.
+- **Market order** — jetzt rein, mit den gezeichneten **Abständen**. Ein vor einer Stunde
+  gezeichneter Block hat einen überholten Entry; seine Form — Risiko und Ziel in Punkten — ist
+  das, was noch zählt, und die wandert an den aktuellen Preis. Gemessen wird am tatsächlichen
+  Fill, Spread und Slippage inbegriffen, damit „Risiko 500" auch 500 kostet, wenn die nächste
+  Bar wegspringt.
+
+Stop und Ziel einer wartenden Order gehen erst in den Markt, wenn der Einstieg füllt — vorher
+gäbe es nichts zu schützen. **Deine Zeichnung verschwindet in dem Moment, in dem der Einstieg
+füllt**, und ab da zeichnet die Engine die Position. Solange die Order nur wartet, bleibt der
+Block stehen: Er ist dann das Einzige, was zeigt, wo Stop und Ziel hinkommen. Wird die Order
+storniert, bleibt er ebenfalls — eingestiegen wurde ja nicht.
+
+Deine Orders laufen durch **dieselbe Engine** wie ein Backtest: Sie füllen frühestens auf der
+Bar nach der, die du gerade ansiehst, mit Spread, Slippage und Kommission, und eine Bar, die
+Stop und Ziel berührt, wird über ihre Minuten entschieden. **Save session** legt die Sitzung als
+Lauf in dieselbe Bibliothek wie die Backtests — damit lässt sie sich direkt daneben legen.
+
+## Läufe vergleichen
+
+Im Reiter **Results** mehrere Läufe mit Ctrl-Klick auswählen. Die Kurven liegen auf einer
+**Zeitachse** übereinander, in Prozent des jeweiligen Startkapitals; wahlweise als Kalender
+(wer lag im März vorn) oder mit ausgerichteten Starts (für Läufe aus verschiedenen Zeiträumen).
+Umschaltbar zwischen Equity und Drawdown, mit Ablesung unter dem Zeiger.
+
+Darunter die Kennzahlen nebeneinander — die beste Zelle je Zeile ist markiert, und zwar in der
+Richtung, in der die Zeile gelesen wird, sodass nicht der tiefste Drawdown gewinnt. Und der
+**Settings-Diff**: was sich zwischen den Läufen tatsächlich unterscheidet, standardmäßig ohne
+die Zeilen, die gleich geblieben sind.
+
 ## Zeichenwerkzeuge
 
 Links am Chart: Trendlinie, Strahl, horizontale und vertikale Linie, Rechteck, Fibonacci-
@@ -232,34 +282,44 @@ Live-Daten sind kein Ziel. Historie bis gestern genügt fürs Backtesting.
 electron/
   data/providers/   Quellen-Adapter (binance.js)
   data/store/       barStore.js — Binärformat, Merge, Timeframe-Aggregation
-  engine/           broker.js (Orders, Fills, Position), backtest.js (Loop, Kennzahlen)
+  engine/           backtest.js (Loop), sweepRunner.js, sweepManager.js
   ipc.js            einzige Brücke zum Renderer
   main.js           Fenster, titleBarOverlay
 shared/
+  engine/broker.js  Orders, Fills, Position — von Backtest und Replay gemeinsam genutzt
+  engine/           summary.js (Kennzahlen), replaySession.js (Abspielkopf, Konto)
+  engine/           plannedTrade.js — aus einer gezeichneten Position wird eine Order
   indicators/       von Chart und Engine gemeinsam genutzt: index.js, volumeProfile.js
   strategies/       backtestbare Regeln: Registry, Risiko/Sizing, silverBullet.js
   analysis/sweep.js Kombinationen, Ranking, Zeitraum-Split — ohne Engine testbar
-  analysis/         Kennzahlen eines fertigen Laufs (Equity ab 0, Serien, Aufschlüsselung)
+  analysis/         Kennzahlen eines fertigen Laufs, Vergleich mehrerer Läufe (compare.js)
 strategies/       Beispielstrategien (sma-cross.js)
 src/
   components/       ChartPanel, DataManager, IndicatorPanel, DrawingToolbar
   components/chart/ volumeProfilePrimitive.js — Canvas-Plugin für das Profil
   components/chart/ fvgPrimitive.js, sessionPrimitive.js, huntPrimitive.js, setupPrimitive.js
+  components/chart/ replayPrimitive.js — offene Position und wartende Orders
   components/chart/drawings/  Geometrie, Modell, Rendering und Maussteuerung
   components/       LineStyleBar, PositionStyleBar — Stilleisten über dem Chart
   components/       BacktestPanel, ResultsPage — Läufe starten und vergleichen
+  components/       ReplayBar, ReplayPanel — Transport, Konto und Ticket
+  components/       ChartContextMenu — Rechtsklick-Menü über dem Chart
   stores/session.js Symbol, Timeframe, Bibliothek, aktive Indikatoren
+  stores/replay.js  Abspielkopf, Fenster, Minuten-Cache, Order-Aktionen
   styles/           Katsumii „Living Data" — tokens.css, base.css, fonts.css
 scripts/            Werkzeuge: Smoke-Test, Backtest-Runner, Versions-Sync
 test/               node:test — Store, Aggregation, Parser, Indikatoren, Profil, Engine,
-                    Zeichnungen, Versionierung
+                    Replay, Vergleich, Zeichnungen, Versionierung
 ```
 
 Details und Begründungen der Entscheidungen: [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Stand
 
-M0 und M1 stehen: Datenbeschaffung, Speicherung, Aggregation, Chart, Indikatoren, Volume
-Profile und die Order-Engine samt Backtest-Loop. Die Engine laeuft bisher nur ueber die
-CLI — Anbindung an die Oberflaeche, Replay und der Bot-Editor sind die naechsten Schritte
-(siehe ARCHITECTURE.md, Abschnitt 11).
+M0 bis M2 stehen: Datenbeschaffung, Speicherung, Aggregation, Chart, Indikatoren, Volume
+Profile, Zeichenwerkzeuge, die Order-Engine samt Backtest-Loop und Sweeps, sowie Replay —
+Bar für Bar von Hand handeln auf derselben Engine, mit gespeicherten Sitzungen, die neben den
+Backtests im Vergleich stehen.
+
+Offen sind der Bot-Editor für eigene Strategien (M3), risikoadjustierte Kennzahlen und ein
+Benchmark (M4) sowie weitere Datenquellen (M5) — siehe ARCHITECTURE.md, Abschnitt 11.

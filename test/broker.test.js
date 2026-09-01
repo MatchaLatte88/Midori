@@ -1,7 +1,7 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { Broker, resetOrderIds } from '../electron/engine/broker.js';
+import { Broker, resetOrderIds } from '../shared/engine/broker.js';
 
 const MIN = 60_000;
 const T0 = Date.UTC(2024, 0, 1);
@@ -323,4 +323,182 @@ test('cancelAll can target a single tag', () => {
   assert.equal(b.cancelAll('entry'), 2);
   assert.equal(b.pending.length, 1);
   assert.equal(b.pending[0].tag, 'other');
+});
+
+/* ─── Brackets attached on fill ─────────────────────────────────────────── */
+
+/* A resting entry cannot carry its stop and target as live orders: they would
+ * be two orders in the market against a position that does not exist, and the
+ * first bar to trade through either of them would open a trade the wrong way
+ * round or cancel the protection before the entry ever arrived. So the levels
+ * ride along on the order and become orders at the fill. */
+
+test('a bracket is not in the market while its entry is still waiting', () => {
+  const b = makeBroker();
+  b.placeOrder({
+    side: 'buy', size: 1, type: 'limit', limitPrice: 98,
+    bracket: { stopLoss: 95, takeProfit: 105 },
+  });
+
+  assert.equal(b.pending.length, 1, 'the entry alone');
+  b.processBar(bar(0, { open: 100, high: 106, low: 99, close: 100 }));
+  assert.equal(b.fills.length, 0, 'the entry never filled');
+  assert.equal(b.pending.length, 1, 'and no stop or target appeared without it');
+});
+
+test('the stop and target appear the moment the entry fills', () => {
+  const b = makeBroker();
+  b.placeOrder({
+    side: 'buy', size: 1, type: 'limit', limitPrice: 98,
+    bracket: { stopLoss: 95, takeProfit: 105 },
+  });
+
+  b.processBar(bar(0, { open: 100, high: 101, low: 97, close: 99 }));
+
+  assert.equal(b.position.size, 1);
+  const tags = b.pending.map((o) => o.tag).sort();
+  assert.deepEqual(tags, ['stop-loss', 'take-profit']);
+  assert.equal(b.position.stopLoss, 95, 'the position carries them for the closed trade');
+  assert.equal(b.position.takeProfit, 105);
+});
+
+test('a bracket cannot fill on the step that placed it', () => {
+  /* The same one-step rule every order here is subject to: the bar that filled
+   * the entry also ran to 95, but the stop did not exist while it did. */
+  const b = makeBroker();
+  b.placeOrder({
+    side: 'buy', size: 1, type: 'limit', limitPrice: 98,
+    bracket: { stopLoss: 95, takeProfit: 105 },
+  });
+
+  b.processBar(bar(0, { open: 100, high: 101, low: 94, close: 96 }));
+  assert.equal(b.trades.length, 0, 'nothing closed on the bar the entry arrived on');
+  assert.equal(b.position.size, 1);
+
+  b.processBar(bar(1, { open: 96, high: 97, low: 94, close: 95 }));
+  assert.equal(b.trades.length, 1, 'and it is live from the next bar');
+  assert.equal(b.trades[0].exitTag, 'stop-loss');
+});
+
+test('with minutes the bracket arms inside the same bar', () => {
+  /* The minute the entry fills on is one step; the next minute is another, so
+   * protection is live for the rest of the hour rather than only from the next
+   * one. That is the whole difference between this and guessing. */
+  const b = makeBroker();
+  b.placeOrder({
+    side: 'buy', size: 1, type: 'limit', limitPrice: 98,
+    bracket: { stopLoss: 95, takeProfit: 105 },
+  });
+
+  b.processBar(bar(0, { open: 100, high: 101, low: 94, close: 96 }), [
+    bar(0, { open: 100, high: 100, low: 97, close: 98 }),   // entry fills here
+    bar(0, { open: 98, high: 98, low: 94, close: 95 }),     // stop taken here
+  ]);
+
+  assert.equal(b.trades.length, 1);
+  assert.equal(b.trades[0].exitTag, 'stop-loss');
+});
+
+test('a distance bracket is measured from the price it actually filled at', () => {
+  /* The reason distances exist: the plan said "risk 5", and a gap on the way in
+   * must not turn that into 3 or 8. */
+  const b = makeBroker();
+  b.placeOrder({
+    side: 'buy', size: 1, type: 'market',
+    bracket: { stopDistance: 5, targetDistance: 10 },
+  });
+
+  b.processBar(bar(0, { open: 93, high: 94, low: 92, close: 93 }));
+
+  assert.equal(b.fills[0].price, 93, 'gapped well below where the plan was drawn');
+  assert.equal(b.position.stopLoss, 88, '93 − 5, not the level of some earlier plan');
+  assert.equal(b.position.takeProfit, 103);
+});
+
+test('costs are inside the fill the distances are measured from', () => {
+  /* So the risk is what the account actually stands to lose, not what it would
+   * have lost at a price nobody got. */
+  const b = new Broker({ balance: 10_000, costs: { feeRate: 0, spreadPct: 0.001, slippagePct: 0 } });
+  b.placeOrder({ side: 'buy', size: 1, type: 'market', bracket: { stopDistance: 5 } });
+  b.processBar(bar(0, { open: 100, high: 101, low: 99, close: 100 }));
+
+  const paid = b.fills[0].price;
+  assert.ok(paid > 100, 'half the spread was paid');
+  assert.equal(b.position.stopLoss, paid - 5);
+});
+
+test('a short brackets the other way round', () => {
+  const b = makeBroker();
+  b.placeOrder({
+    side: 'sell', size: 1, type: 'market',
+    bracket: { stopDistance: 5, targetDistance: 10 },
+  });
+  b.processBar(bar(0, { open: 100, high: 101, low: 99, close: 100 }));
+
+  assert.equal(b.position.size, -1);
+  assert.equal(b.position.stopLoss, 105, 'above, where a short is wrong');
+  assert.equal(b.position.takeProfit, 90);
+});
+
+test('an attached leg that fills retires its sibling', () => {
+  const b = makeBroker();
+  b.placeOrder({
+    side: 'buy', size: 1, type: 'market',
+    bracket: { stopLoss: 95, takeProfit: 105 },
+  });
+  b.processBar(bar(0, { open: 100, high: 100, low: 100, close: 100 }));
+  assert.equal(b.pending.length, 2);
+
+  b.processBar(bar(1, { open: 100, high: 106, low: 100, close: 105 }));
+  assert.equal(b.trades[0].exitTag, 'take-profit');
+  assert.equal(b.pending.length, 0, 'the stop did not stay behind');
+});
+
+test('a bracket on a fill that opened nothing is simply not attached', () => {
+  const b = makeBroker();
+  // reduceOnly with no position: the order cancels itself, and nothing follows.
+  b.placeOrder({
+    side: 'sell', size: 1, type: 'market', reduceOnly: true,
+    bracket: { stopLoss: 105 },
+  });
+  b.processBar(bar(0, { open: 100, high: 101, low: 99, close: 100 }));
+
+  assert.equal(b.pending.length, 0);
+  assert.equal(b.fills.length, 0);
+});
+
+test('a leg given as both a level and an offset is refused', () => {
+  const b = makeBroker();
+  assert.throws(
+    () => b.placeOrder({
+      side: 'buy', size: 1, type: 'market',
+      bracket: { stopLoss: 95, stopDistance: 5 },
+    }),
+    /not both/,
+  );
+});
+
+test('a bracket distance that is not a distance is refused', () => {
+  const b = makeBroker();
+  assert.throws(
+    () => b.placeOrder({ side: 'buy', size: 1, type: 'market', bracket: { stopDistance: 0 } }),
+    /stopDistance must be a positive number/,
+  );
+  assert.throws(
+    () => b.placeOrder({ side: 'buy', size: 1, type: 'market', bracket: { targetDistance: -3 } }),
+    /targetDistance must be a positive number/,
+  );
+  assert.throws(
+    () => b.placeOrder({ side: 'buy', size: 1, type: 'market', bracket: { stopLoss: NaN } }),
+    /stopLoss must be a finite number/,
+  );
+});
+
+test('an order without a bracket is unchanged by any of this', () => {
+  const b = makeBroker();
+  const o = b.placeOrder({ side: 'buy', size: 1, type: 'market' });
+  assert.equal(o.bracket, null);
+  b.processBar(bar(0, { open: 100, high: 101, low: 99, close: 100 }));
+  assert.equal(b.pending.length, 0, 'nothing was attached');
+  assert.equal(b.position.stopLoss, null);
 });
