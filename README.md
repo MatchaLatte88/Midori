@@ -211,8 +211,12 @@ und nimmt bei einem Short Gewinn mit, darüber umgekehrt. Ein Level, das schon l
 verschoben. Während die Maus unten ist, ändert sich nichts am Konto; erst das Loslassen schickt
 die Order, ab der nächsten Bar wie jede andere. Ein Level auf der falschen Seite des letzten
 Preises wird abgelehnt und sagt warum — es hätte die Position geschlossen statt sie zu schützen.
-Die Marken zeigen neben dem Level auch, was es in **$** wert ist: was der Stop kostet, was das
-Ziel einbringt, was offen gerade dasteht.
+
+**Die Preise stehen auf der Preisachse**, wo du ohnehin nach ihnen siehst — Einstieg, Stop und
+Ziel, jeder in seiner Farbe. Die Marken am Block sagen dafür, was ein Level *wert* ist: was der
+Stop kostet und was das Ziel einbringt, beides in $ und in R. Der Stop ist dabei −1,00R, denn
+genau er ist das R, gegen das alles andere gerechnet wird. Die Marke der Position selbst trägt
+Richtung, Größe und das offene Ergebnis: `L 0,05  +$142,30  +0,57R`.
 
 **Ganz rechts auf der Positionslinie sitzt ein ×.** Ein Klick darauf schließt die Position zu
 Markt — dasselbe wie „Close" im Panel, nur ohne den Weg dorthin.

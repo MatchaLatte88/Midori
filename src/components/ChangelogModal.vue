@@ -104,7 +104,13 @@ function isLatest(release) {
 }
 
 .scroll {
+  /* A flex item's min-height is its content by default, so without this the
+     list pushes the modal past its own max-height and the overflow below never
+     comes into play — the notes simply run off the bottom of the screen. */
+  min-height: 0;
   overflow-y: auto;
+  /* The page behind a modal should not scroll when its list reaches the end. */
+  overscroll-behavior: contain;
   padding: 14px 0 16px;
   display: flex;
   flex-direction: column;

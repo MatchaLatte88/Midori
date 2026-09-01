@@ -153,6 +153,21 @@ function money(value) {
   })}`;
 }
 
+/**
+ * A position size, rounded to something a person reads rather than audits.
+ *
+ * formatPrice is wrong for this: it hands eight decimals to anything under 1,
+ * because that is what a cheap coin's *price* needs — so a size of 0.05 came
+ * out as 0.05000000. Four significant figures keep the size honest, since it
+ * falls out of a risk calculation and is almost never round, while dropping the
+ * digits that only say the division had a remainder.
+ */
+function lots(value) {
+  return Number(Math.abs(value).toPrecision(4)).toLocaleString('en-GB', {
+    maximumFractionDigits: 8,
+  });
+}
+
 /** The colour a direction is drawn in — the candles' own up and down. */
 function directionTone(long, colour) {
   return colour(long ? 'candle-up-brd' : 'candle-down-body');
@@ -337,37 +352,26 @@ class ReplayRenderer {
 
     /* Against the right edge, beside the price scale: the number that is still
      * moving, and the two that decide what it can become. Each tag sits on its
-     * own level, which is also the line that level is dragged by — so what
-     * says where the stop is and what you take hold of are one object, the way
-     * they are on a broker's ticket. */
-    this._pnlTag(ctx, mediaSize, yEntry, marks.unrealized, risk, colour);
+     * own level, which is also the line that level is dragged by — so what says
+     * what the stop costs and what you take hold of are one object, the way
+     * they are on a broker's ticket.
+     *
+     * The prices themselves are on the axis (see LevelAxisView), so these say
+     * what a level is *worth* rather than repeating what it is: the cash, and
+     * the same R the open figure is measured in. A stop is −1.00R by
+     * construction — R is the distance to it — and that is worth printing
+     * rather than leaving implied, because it is the scale the other two
+     * numbers on the block are read against. */
+    const stopR = risk > 0 ? '  −1.00R' : '';
+    const targetR = risk > 0 && reward != null ? `  +${(reward / risk).toFixed(2)}R` : '';
+
+    this._pnlTag(ctx, mediaSize, yEntry, position, marks.unrealized, risk, colour);
     this._closeButton(ctx, mediaSize, yEntry, this._source.hover === 'close', colour);
     if (yStop != null) {
-      this._tag(ctx, mediaSize, yStop, `SL ${formatPrice(stopLoss)}  −${money(risk)}`, loss, colour);
+      this._tag(ctx, mediaSize, yStop, `SL  −${money(risk)}${stopR}`, loss, colour);
     }
     if (yTarget != null) {
-      this._tag(
-        ctx, mediaSize, yTarget,
-        `TP ${formatPrice(takeProfit)}  +${money(reward)}`, profit, colour,
-      );
-    }
-
-    /* What the position is, on the block itself, just above the entry line.
-     * Measured rather than guessed at against a minimum width: the block ends
-     * at the pane, so how much room there is depends on how long ago the
-     * position was opened, and a threshold that works for "0.05 @ 1.2345"
-     * clips "0.05 @ 95,205.21". What does not fit is left out, in order. */
-    const y = yEntry - LABEL_LIFT;
-    const x = Math.max(left, 0) + 6;
-    const label = long ? 'LONG' : 'SHORT';
-    const chip = chipWidth(ctx, label);
-    if (x + chip > right - 2) return;
-
-    this._chip(ctx, x, y, label, tone, colour);
-
-    const detail = `${formatPrice(size)} @ ${formatPrice(position.entryPrice)}`;
-    if (x + chip + 4 + plateWidth(ctx, detail) <= right - 2) {
-      this._plate(ctx, x + chip + 4, y, detail, colour);
+      this._tag(ctx, mediaSize, yTarget, `TP  +${money(reward)}${targetR}`, profit, colour);
     }
   }
 
@@ -412,11 +416,12 @@ class ReplayRenderer {
 
       this._marker(ctx, left, y, long, tone);
 
-      /* Right of the playhead there are only the few bars the chart keeps as
-       * an offset, which is rarely room for a label — so it slides left along
-       * its own line instead of being clipped off by the pane. */
-      const label = long ? 'LONG' : 'SHORT';
-      const detail = `${formatPrice(order.size)} · next bar`;
+      /* The same letter the open position wears, for the same reason — and
+       * here there is barely room for a word anyway: right of the playhead
+       * there are only the few bars the chart keeps as an offset, so the label
+       * slides left along its own line instead of being clipped by the pane. */
+      const label = long ? 'L' : 'S';
+      const detail = `${lots(order.size)} · next bar`;
       const chip = chipWidth(ctx, label);
       const total = chip + 4 + plateWidth(ctx, detail);
       const x = Math.max(2, Math.min(left + 6, mediaSize.width - total - 2));
@@ -482,20 +487,28 @@ class ReplayRenderer {
   }
 
   /**
-   * What the position is worth right now.
+   * The position itself: which way, how big, and what it is worth right now.
    *
-   * Unrealised, and taken from the Broker rather than worked out again here, so
-   * the number on the chart and the number in the panel can never disagree. In
-   * R beside it wherever there is a stop to measure against: 240 says very
-   * little on its own, and 240 against a risk of 400 says most of what there is
-   * to say about the trade.
+   * One tag on the entry line carrying all of it, because those three things
+   * are only ever read together — and because the alternative was a second
+   * label on the block, which covered the candles the position is being judged
+   * against.
+   *
+   * The direction is a letter rather than a word: LONG spelled out beside a
+   * P&L is the least surprising thing on the chart, and the triangle at the
+   * entry says it in colour anyway. The result is unrealised, and taken from
+   * the Broker rather than worked out again here, so the number on the chart
+   * and the number in the panel can never disagree. In R beside it wherever
+   * there is a stop to measure against: 240 says very little on its own, and
+   * 240 against a risk of 400 says most of what there is to say.
    */
-  _pnlTag(ctx, mediaSize, y, unrealized, risk, colour) {
+  _pnlTag(ctx, mediaSize, y, position, unrealized, risk, colour) {
     if (!Number.isFinite(unrealized)) return;
 
     const up = unrealized >= 0;
     const r = risk > 0 ? unrealized / risk : null;
-    const text = `${up ? '+' : '−'}${money(unrealized)}`
+    const text = `${position.size > 0 ? 'L' : 'S'} ${lots(position.size)}`
+      + `   ${up ? '+' : '−'}${money(unrealized)}`
       + (r === null ? '' : `  ${r >= 0 ? '+' : '−'}${Math.abs(r).toFixed(2)}R`);
 
     this._tag(
@@ -612,7 +625,7 @@ class ReplayRenderer {
 
       ctx.fillStyle = tone;
       ctx.fillText(
-        `${order.tag ?? `${order.side} ${order.type}`}  ${formatPrice(order.size)} @ ${formatPrice(price)}`,
+        `${order.tag ?? `${order.side} ${order.type}`}  ${lots(order.size)} @ ${formatPrice(price)}`,
         left + 5,
         y - 3,
       );
@@ -637,6 +650,63 @@ class ReplayPaneView {
   }
 }
 
+/**
+ * A level's own label on the price axis.
+ *
+ * The axis is where a trader already looks to read a price off the chart, and
+ * it is the one place a level can be shown without covering a candle. So the
+ * three prices that belong to a position go there — entry, stop, target — and
+ * come back out of the tags on the block, which then have room to say what the
+ * level is *worth* instead of repeating what it is.
+ *
+ * Each view reads the position on every call rather than being fed a value, so
+ * a level under the pointer follows the drag without anything having to push
+ * an update: the same repaint that moves the line moves the label.
+ */
+class LevelAxisView {
+  constructor(source, field) {
+    this._source = source;
+    this._field = field;
+  }
+
+  /** The price to show — the dragged one while a drag is in progress. */
+  _price() {
+    const position = this._source.marks?.position;
+    if (!position) return null;
+    if (this._field === 'entry') return position.entryPrice;
+    const drag = this._source.drag;
+    return drag?.field === this._field ? drag.price : position[this._field];
+  }
+
+  visible() {
+    return this._source.series != null && this._price() != null;
+  }
+
+  coordinate() {
+    const price = this._price();
+    if (price == null || !this._source.series) return -100;
+    return this._source.series.priceToCoordinate(price) ?? -100;
+  }
+
+  text() {
+    const price = this._price();
+    return price == null ? '' : formatPrice(price);
+  }
+
+  textColor() {
+    return paletteReader()('chart-bg');
+  }
+
+  /* The same three colours the block itself uses, so a label on the axis and
+   * the line it belongs to are obviously one thing. */
+  backColor() {
+    const colour = paletteReader();
+    if (this._field === 'stopLoss') return colour('neg');
+    if (this._field === 'takeProfit') return colour('pos');
+    return colour('txt');
+  }
+}
+
 export class ReplayPrimitive {
   constructor() {
     /** { index, startIndex, position, orders, lastPrice, unrealized } or null. */
@@ -651,6 +721,13 @@ export class ReplayPrimitive {
     this.chart = null;
     this._requestUpdate = null;
     this._paneViews = [new ReplayPaneView(this)];
+    /* One per level, built once and reused: the library caches on the identity
+     * of this array, and each view reads the position for itself. */
+    this._axisViews = [
+      new LevelAxisView(this, 'entry'),
+      new LevelAxisView(this, 'stopLoss'),
+      new LevelAxisView(this, 'takeProfit'),
+    ];
   }
 
   attached({ chart, series, requestUpdate }) {
@@ -671,6 +748,11 @@ export class ReplayPrimitive {
     this.drag = drag;
     this.hover = hover;
     this._requestUpdate?.();
+  }
+
+  /* The three prices on the price axis. Same array every time, as above. */
+  priceAxisViews() {
+    return this._axisViews;
   }
 
   paneViews() {

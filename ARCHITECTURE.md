@@ -1383,11 +1383,10 @@ verschiedener Meinung sein.
 Gezeichnet wird die Position als Verlauf: die Fläche am Level am kräftigsten, zur Einstiegslinie
 hin auslaufend. Um den Einstieg herum stehen die Kerzen, dort soll frei bleiben; das weit
 entfernte Ende ist das Level selbst, und das ist der Teil, den das Auge finden soll. Am
-Blockanfang sitzt ein Dreieck auf der Einstiegslinie, daneben ein Chip mit der Richtung und eine
-Plakette mit Größe und Einstiegspreis — Plakette, weil ein 10px-Label ohne Grund in den Kerzen
-verschwindet. Was nicht mehr auf den Block passt, entfällt der Reihe nach; die Breiten werden
-gemessen und nicht gegen eine Mindestbreite geraten, denn eine Schwelle, die für „0,05 @ 1,2345"
-stimmt, schneidet „0,05 @ 95.205,21" ab.
+Blockanfang sitzt ein Dreieck auf der Einstiegslinie — in der Richtungsfarbe, und damit das
+Einzige, was auf dem Block selbst steht. Alles Weitere sitzt am rechten Rand oder auf der Achse:
+Ein zweites Label mitten im Block verdeckte genau die Kerzen, an denen die Position beurteilt
+wird.
 
 **Grün und Rot bedeuten hier Gewinn und Verlust und sonst nichts** — das sind die Zonen. Eine
 Richtung ist weder gut noch schlecht, Long und Short nehmen deshalb die beiden Farben, mit denen
@@ -1470,6 +1469,33 @@ sich aus aktuell, solange nichts gezogen wird.
 Die Marken am rechten Rand sind selbst Griffe, und darum beginnt die greifbare Strecke nie weiter
 rechts als sie: Eine gerade eröffnete Position hat einen Block von wenigen Pixeln Breite — und
 genau dann muss der Stop drauf (`TAG_REACH`).
+
+### Die Level stehen auf der Achse
+
+Einstieg, Stop und Ziel tragen ihre Preise als Label auf der **Preisachse**
+(`LevelAxisView`, über `priceAxisViews()` des Primitives). Dort sucht man einen Preis ohnehin,
+und es ist die einzige Stelle, an der ein Level stehen kann, ohne eine Kerze zu verdecken. In
+denselben drei Farben wie die Linien, damit Label und Linie erkennbar dasselbe sind.
+
+Jede View liest die Position bei **jedem Aufruf**, statt einen Wert gereicht zu bekommen. Damit
+folgt ein Level unter dem Zeiger dem Zug von allein: Derselbe Repaint, der die Linie verschiebt,
+verschiebt das Label — es gibt keinen zweiten Zustand, der nachgezogen werden müsste.
+
+Aus den Marken am Block ist der Preis dafür verschwunden. Sie sagen jetzt, was ein Level **wert**
+ist statt zu wiederholen, was es ist: den Betrag und dasselbe R, in dem auch das offene Ergebnis
+gemessen wird. Der Stop steht auf −1,00R, und zwar per Konstruktion — R *ist* der Abstand zu ihm.
+Das ausdrücklich hinzuschreiben statt es implizit zu lassen, ist der Punkt: Es ist die Skala, an
+der die beiden anderen Zahlen auf dem Block gelesen werden. Wird der Stop nachgezogen, verschiebt
+sich diese Skala mit, und das offene Ergebnis in R verschiebt sich genauso — beide messen gegen
+denselben aktuellen Stop.
+
+Auf dem Block selbst steht damit nichts mehr außer dem Dreieck am Einstieg. **Richtung und Größe
+sind in die Marke der Position gewandert** — `L` oder `S` statt eines ausgeschriebenen „LONG",
+denn neben einem P&L ist das ausgeschriebene Wort die am wenigsten überraschende Angabe auf dem
+Chart, und die Farbe des Dreiecks sagt es ohnehin. Die Größe wird auf vier signifikante Stellen
+gerundet (`lots`): Sie fällt aus einer Risikorechnung und ist fast nie rund, aber `formatPrice`
+gab allem unter 1 acht Nachkommastellen — das ist, was der *Preis* einer billigen Münze braucht,
+nicht was eine Stückzahl braucht.
 
 ### Was noch nicht gefüllt hat
 

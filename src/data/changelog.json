@@ -1,6 +1,28 @@
 {
   "releases": [
     {
+      "version": "v0.1.11-dev",
+      "date": "Sep 2026",
+      "changes": [
+        {
+          "type": "feat",
+          "text": "Entry, stop and target now carry their prices as labels on the price axis, each in its own colour - which is where you look for a price anyway, and the one place a level can be shown without covering a candle. They follow a level while it is being dragged"
+        },
+        {
+          "type": "style",
+          "text": "The tags on the position say what a level is worth rather than repeating what it is: what the stop costs and what the target pays, both in $ and in R. The stop reads −1.00R because that is what R is - the distance to it - and it is the scale the other two numbers are read against"
+        },
+        {
+          "type": "style",
+          "text": "Direction, size and open result sit together in one tag on the entry line - L or S rather than a spelled-out LONG, with the size rounded to something readable instead of eight decimal places. Nothing is left on the block itself but the marker at the entry, so the candles the position is judged against stay clear"
+        },
+        {
+          "type": "fix",
+          "text": "The release notes scroll again. Past a screenful of entries the list ran off the bottom of the window with no way to reach the rest"
+        }
+      ]
+    },
+    {
       "version": "v0.1.10-dev",
       "date": "Sep 2026",
       "changes": [
