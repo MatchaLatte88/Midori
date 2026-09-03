@@ -68,7 +68,7 @@ function deltaLabel(d) {
 </script>
 
 <template>
-  <section class="k-panel data-panel">
+  <section class="data-panel">
     <div class="k-eyebrow">Market data</div>
 
     <p class="k-note">
@@ -134,17 +134,23 @@ function deltaLabel(d) {
 </template>
 
 <style scoped>
+/* A column of the workspace rather than a card in it: on the ground, square,
+   and separated from the chart by the one hairline that faces it. */
 .data-panel {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 18px;
-  width: 312px;
+  gap: 13px;
+  padding: 14px;
+  width: 300px;
   flex-shrink: 0;
   overflow-y: auto;
+  background: var(--bg);
 }
-.field { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 0; }
+.field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+/* Only in a row: in the column this panel is, `flex: 1` would grow the field
+   downwards and push everything under it off the bottom. */
 .row { display: flex; gap: 10px; }
+.row .field { flex: 1; }
 .input {
   height: 32px;
   padding: 0 10px;
@@ -185,8 +191,8 @@ function deltaLabel(d) {
 }
 .library-item:hover { background: var(--glass); }
 .library-item.active {
-  border-color: var(--accent-brd);
-  background: var(--accent-bg);
+  border-color: var(--line-strong);
+  background: var(--sel-bg);
 }
 .lib-symbol { font-family: var(--font-num); font-weight: 600; }
 .no-delta { color: var(--ember); }

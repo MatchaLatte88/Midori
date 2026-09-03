@@ -1,10 +1,9 @@
 <script setup>
 /* The single hover-hint surface. Mounted once, near the root.
  *
- * Styled as a smaller sibling of `.k-panel`: same gradient, same 1px line, same
- * shadow, one radius step down because it is a small object. No blur — the
- * design language uses gradient surfaces rather than frosted glass, and the
- * chart underneath must not smear.
+ * Styled as a small `.k-pop`: it is over the app rather than in it, so it is
+ * the one kind of surface allowed a shadow, one radius step down because it is
+ * a small object. No blur — the chart underneath must not smear.
  *
  * It prefers the side with more room, which in practice puts it to the left of
  * the settings panel — the panel sits against the window edge, so there is
@@ -54,8 +53,9 @@ const placement = computed(() => {
   padding: 9px 11px;
   border: 1px solid var(--brd);
   border-radius: var(--radius-md);
-  background: var(--panel-bg);
-  box-shadow: var(--panel-shadow);
+  background: var(--surface-2);
+  border: 1px solid var(--brd);
+  box-shadow: var(--pop-shadow);
   pointer-events: none;
 }
 

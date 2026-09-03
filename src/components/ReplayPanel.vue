@@ -166,7 +166,7 @@ function confirmStop() {
 </script>
 
 <template>
-  <aside class="k-panel replay-panel">
+  <aside class="replay-panel">
     <!-- ─── Setting one up ─────────────────────────────────────────────── -->
     <template v-if="!replay.active">
       <header class="head">
@@ -215,7 +215,7 @@ function confirmStop() {
           <input v-model.number="balance" class="input input--sm" type="number" min="1" step="1000" />
         </label>
 
-        <button class="btn btn--accent" :disabled="!canStart" @click="begin">
+        <button class="btn btn--primary" :disabled="!canStart" @click="begin">
           {{ starting ? 'Loading…' : 'Start replay' }}
         </button>
       </template>
@@ -324,7 +324,7 @@ function confirmStop() {
 
           <div class="row">
             <button
-              class="btn btn--sm btn--accent grow"
+              class="btn btn--sm btn--primary grow"
               :disabled="saving || replay.trades.length === 0"
               v-hint="{
                 label: 'Save as a run',
@@ -376,14 +376,17 @@ function confirmStop() {
 </template>
 
 <style scoped>
+/* The left column of the replay workspace — see DataManager for why it is
+   flush against the chart rather than floating beside it. */
 .replay-panel {
   display: flex;
   flex-direction: column;
   gap: 12px;
   width: 304px;
   flex: none;
-  padding: 18px;
+  padding: 14px;
   overflow-y: auto;
+  background: var(--bg);
 }
 .head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .lead { color: var(--sec); margin: 0; line-height: 1.5; }
@@ -419,7 +422,7 @@ function confirmStop() {
   transition: color 0.15s, border-color 0.15s, background 0.15s;
 }
 .tab:hover { color: var(--txt); background: var(--glass); }
-.tab.is-active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab.is-active { color: var(--txt); border-bottom-color: var(--accent); }
 .count {
   min-width: 15px;
   padding: 0 4px;

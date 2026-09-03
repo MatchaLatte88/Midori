@@ -34,7 +34,7 @@ const label = computed(() => (
 <template>
   <button
     class="handle"
-    :class="{ 'is-closed': !props.open }"
+    :class="[props.side === 'left' ? 'faces-right' : 'faces-left', { 'is-closed': !props.open }]"
     :title="label"
     :aria-label="label"
     :aria-expanded="props.open"
@@ -49,9 +49,17 @@ const label = computed(() => (
 </template>
 
 <style scoped>
+/* A seam rather than a button: the workspace has no gutters, so the handle is
+   barely wider than the line it sits on and only shows itself under the
+   pointer.
+
+   It also *is* that line. The panel beside it used to carry the border, which
+   put the column edge ten pixels short of the chart — near enough to look like
+   a gap rather than an edge. The border sits on whichever side of the handle
+   faces the chart, so the line is exactly where the chart begins. */
 .handle {
   flex: none;
-  width: 12px;
+  width: 9px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -66,8 +74,11 @@ const label = computed(() => (
 /* Visible without hovering while the panel is away — otherwise the only clue
    that something folded up is a gap at the edge of the window. */
 .handle.is-closed { color: var(--faint); }
-.handle:hover { background: var(--glass); color: var(--txt); }
+.handle:hover { background: var(--hover); color: var(--txt); }
 .handle:focus-visible { color: var(--txt); outline: 1px solid var(--accent-brd); }
 
 .handle svg { width: 12px; height: 12px; }
+
+.handle.faces-right { border-right: 1px solid var(--line); }
+.handle.faces-left { border-left: 1px solid var(--line); }
 </style>

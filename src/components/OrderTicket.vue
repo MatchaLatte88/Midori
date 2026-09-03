@@ -385,7 +385,7 @@ function send(side) {
   transition: color 0.15s, background 0.15s;
 }
 .mode-btn:hover { color: var(--txt); }
-.mode-btn.is-active { color: var(--accent); background: var(--accent-bg); }
+.mode-btn.is-active { color: var(--txt); background: var(--sel-bg); }
 
 .size-line { margin: 0; color: var(--txt); line-height: 1.45; }
 .size-line b { font-weight: 600; }

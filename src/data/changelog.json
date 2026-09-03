@@ -1,6 +1,52 @@
 {
   "releases": [
     {
+      "version": "v0.1.13-dev",
+      "date": "Sep 2026",
+      "changes": [
+        {
+          "type": "feat",
+          "text": "87 drawing tools, in ten families down the left rail: every TradingView-style line, channel, pitchfork, Fibonacci and Gann tool, harmonic and Elliott patterns, shapes, and a full set of text annotations - alongside Midorii's own fair value gap and range volume profile tools. Each rail button shows the tool last used from its family; the corner mark or a long press opens the rest"
+        },
+        {
+          "type": "feat",
+          "text": "Undo and redo for drawings, Ctrl+Z / Ctrl+Shift+Z or the two arrows on the rail. A step is an interaction, not a mouse move - dragging a level across the chart is one step, and placing a note and typing it is one step, not two. History is kept per symbol"
+        },
+        {
+          "type": "feat",
+          "text": "A magnet snaps a new anchor onto the nearest open, high, low or close - weak only within a few pixels, strong always. Toggle it from the rail or with M"
+        },
+        {
+          "type": "feat",
+          "text": "Drawings can be locked, one at a time or all together: they stay on the chart but the pointer passes through them, so a chart whose structure is settled stops being one stray drag away from moving"
+        },
+        {
+          "type": "feat",
+          "text": "Text, notes, callouts, price labels and stickers can be placed on the chart, typed into a field that opens on the spot. Two of them - anchored text and an anchored note - pin to the pane itself rather than to a bar, so a caption stays put while the chart is panned under it"
+        },
+        {
+          "type": "feat",
+          "text": "The chrome is now two rows instead of one: a nav row for which view you're on and the app-wide switches, and an instrument row underneath for the symbol, timeframe and price - so a bar that used to mix \"where am I\" with \"what is BTC doing\" no longer has to be read word by word"
+        },
+        {
+          "type": "feat",
+          "text": "Switching symbol is now a search over what's already on disk, opened from the instrument row instead of buried three clicks into the data panel"
+        },
+        {
+          "type": "feat",
+          "text": "A status strip along the bottom of the window: symbol, playhead, and the current time in the market's own UTC clock, so a chart read at 1am local doesn't need arithmetic to place it"
+        },
+        {
+          "type": "feat",
+          "text": "The indicator catalogue is a scannable list of names now, with the explanation on hover instead of two lines under every entry - useful to read once, and forty lines in the way every time after"
+        },
+        {
+          "type": "feat",
+          "text": "A legend in the chart's corner names the candle under the crosshair - open, high, low, close - and falls back to the latest bar when the pointer leaves the chart"
+        }
+      ]
+    },
+    {
       "version": "v0.1.12-dev",
       "date": "Sep 2026",
       "changes": [

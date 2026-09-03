@@ -20,8 +20,7 @@ Keine nativen Module. Das ist eine bewusste Einschränkung: jedes native Modul m
 jedem Electron-Update neu gebaut werden und verkompliziert das Signieren des Installers.
 Deshalb auch kein DuckDB (siehe Abschnitt 3).
 
-UI-Sprache ist Englisch, das Design folgt der „Stille Karten"-Sprache (Abschnitt 10)
-(Abschnitt 10).
+UI-Sprache ist Englisch, das Design folgt der „Terminal"-Sprache (Abschnitt 10).
 
 ## 2. Warum Marktdaten nie mitgeliefert werden
 
@@ -134,7 +133,8 @@ Electron main
   engine/backtest.js Der Loop: Fills vor Strategie, Kennzahlen
 Renderer (Vue)
   stores/session.js  ausgewähltes Symbol, Timeframe, Bibliothek
-  components/        ChartPanel, DataManager, IndicatorPanel, DrawingToolbar
+  components/        AppNav, InstrumentBar, StatusBar — die drei Bänder der Chrome
+  components/        ChartPanel, ChartLegend, DataManager, IndicatorPanel, DrawingToolbar
   components/chart/  volumeProfilePrimitive.js, drawings/
 ```
 
@@ -619,9 +619,170 @@ für Konkurrenzprodukte nicht lizenziert (Abschnitt 1). `lightweight-charts` bri
 Zeichenfunktionen mit. Sie sind deshalb selbst gebaut, über dieselbe Plugin-API wie das Volume
 Profile.
 
-Vorhanden: Trendlinie, Strahl, horizontale und vertikale Linie, Rechteck, Fibonacci-
-Retracement, ein Messwerkzeug (Preisdifferenz, Prozent, Anzahl Bars) sowie Long- und
-Short-Position.
+Vorhanden sind 86 Werkzeuge in zehn Familien: Linien, Kanäle, Pitchforks, Fibonacci, Gann,
+Patterns, Formen, Annotationen, Prognose/Messung und die beiden Midorii-eigenen (Fair Value
+Gap, Range Volume Profile).
+
+### Die Registry
+
+Ein Werkzeug war anfangs fünf `switch`-Blöcke — wie viele Anker, wie gezogen wird, was ein
+Treffer ist, wie gemalt wird, welches Icon — verteilt über drei Dateien. Das trägt zehn
+Werkzeuge. Bei 86 heißt es, dass jedes neue Werkzeug fünf Änderungen an drei Stellen ist und
+eines, das nur in vier davon eingetragen wurde, auf eine Weise kaputtgeht, die nichts
+bemerkt.
+
+Ein Werkzeug ist deshalb **ein Objekt in einer Datei**, neben den verwandten Werkzeugen
+(`drawings/tools/*.js`), und `drawings/registry.js` ist das Einzige, das die ganze Liste
+kennt. Alles andere stellt ihr eine Frage: `pointsRequired`, `gesturePoints`,
+`buildFromGesture`, `hitTest`, `styleKind`. Eine Spec deklariert Identität, Gruppe, Icon,
+Ankerzahl, Geste, Hit-Test und Renderer.
+
+Damit das ohne Import-Zyklus geht, ist die Schichtung strikt:
+
+```
+geometry.js   reine Mathematik in Pixeln — kennt kein Werkzeug
+model.js      Vokabular: Farben, Breiten, Muster, Textgrößen — importiert nichts
+render.js     Canvas-Helfer: Strich, Füllung, Etikett, Halo
+tools/*.js    die Specs — importieren geometry, model, render
+registry.js   sammelt die Specs, beantwortet die Fragen
+factory.js    createDrawing/parseDrawing — fragt die Registry nach der Ankerzahl
+```
+
+Würde `model.js` die Registry zurückimportieren, bildeten die vier einen Zyklus, und
+welches Modul zuerst betreten wird, läse halb initialisierte Konstanten aus den anderen.
+Deshalb liegen `createDrawing` und `parseDrawing` in `factory.js` statt im Vokabular.
+
+`test/drawingTools.test.js` baut jedes der 86 Werkzeuge, malt es gegen einen
+aufzeichnenden Canvas-Kontext und fragt es nach einem Klick. 86 Renderer sind 86
+Gelegenheiten für einen Tippfehler, der sich sonst nur als leerer Chart und eine Exception
+in einem Canvas-Callback zeigt, wo niemand hinsieht.
+
+### Sechs Arten, ein Werkzeug zu setzen
+
+Drei davon sind mit dem Loslassen der Maus nicht vorbei, und genau das war die zweite
+Erweiterung, die die alte Gestenlogik nicht hergab.
+
+| Geste | Bedeutung | Beispiel |
+|---|---|---|
+| `click` | ein Druck, ein Anker | horizontale Linie |
+| `drag` | drücken, ziehen, loslassen | Trendlinie, Rechteck |
+| `clicks` | ein Klick pro Anker, bis vollständig | Pitchfork (3), XABCD (5) |
+| `poly` | Klicks, bis der Nutzer stoppt | Polylinie, Pfad |
+| `free` | Punkte werden entlang des Ziehens abgetastet | Pinsel, Textmarker |
+| `pick` | ein Druck, die Bars liefern die Anker | Fair Value Gap |
+
+Eine Geste hat deshalb zwei Hälften: `gesture` lebt für einen Druck, `pending` über mehrere
+Drücke hinweg, bis die Form vollständig ist. Der Entwurf hängt zwischen den Klicks am Zeiger
+— ohne das ist ein Dreiklick-Werkzeug nicht platzierbar. Beendet wird eine offene Form per
+Doppelklick oder Enter, abgebrochen mit Escape.
+
+Freihandstriche verwerfen Punkte, die näher als drei Pixel am letzten liegen. Ohne diese
+Regel erzeugt eine langsame Hand hunderte Punkte pro Sekunde, alle innerhalb eines Pixels,
+und der Strich kostet mehr Speicher und Rechenzeit als der ganze restliche Chart.
+
+### Magnet
+
+Ein Level soll fast immer auf einem Preis liegen, den der Markt tatsächlich gedruckt hat.
+Wer es nach Augenmaß bei 1 px Auflösung setzt, liegt jedes Mal ein paar Cent daneben. Der
+Magnet rastet auf das nächste Open, High, Low oder Close der Bar unter dem Zeiger ein — und
+auf deren Zeitstempel, denn die halbe Aussage eines Levels auf dem High ist, dass es genau
+mit dieser Bar beginnt.
+
+Zwei Stärken, weil das zwei verschiedene Wünsche sind: **schwach** greift nur innerhalb von
+14 Pixeln, freie Platzierung zwischen den Bars bleibt möglich; **stark** rastet immer ein.
+Die Distanz wird auf dem Schirm gemessen, nicht im Preis — „innerhalb von 14 Pixeln" ist eine
+Regel, der eine Hand folgen kann, „innerhalb von vier Dollar" nicht. Taste `M` schaltet
+durch.
+
+### Sperren
+
+Eine gesperrte Zeichnung wird gemalt, ist aber für den Zeiger nicht da: `findAt` überspringt
+sie, der Klick geht durch auf den Chart. Genau das ist der Zweck — ein Chart, dessen Struktur
+steht, soll stehen bleiben, und ein verrutschter Zug soll nicht das Level mitnehmen, das
+niemand anfassen wollte. Ausgewählt und entsperrt wird sie über die Objektliste. Wie
+`hidden` wird `locked` **mit der Zeichnung gespeichert**, sonst wäre das Sperren Arbeit ohne
+Ertrag.
+
+### Rückgängig
+
+Undo arbeitet auf **ganzen Schnappschüssen** der Zeichnungsmenge, nicht auf einem Protokoll
+beschriebener Änderungen. Das ist hier bezahlbar, weil in `useDrawings` jede Mutation das
+Array ersetzt und nur die angefasste Zeichnung kopiert: Ein Schnappschuss ist eine
+Array-Referenz, und zwei Schnappschüsse teilen sich jede Zeichnung, die sich nicht geändert
+hat. Ein Chart mit 40 Zeichnungen und 100 Schritten hält 40 Objekte und 100 Arrays von
+Zeigern darauf — nicht 4000 Zeichnungen.
+
+Die Alternative — eine Umkehroperation pro Kommando — ist genau dort, wo Undo-Bugs wohnen:
+Jedes neue Kommando braucht seine eigene Umkehrung, und die falsche ist die, die niemand
+ausprobiert hat.
+
+**Ein Schritt ist eine Interaktion, keine Mutation.** Das Ziehen eines Levels ändert das Array
+bei jeder Mausbewegung, und das Tippen einer Notiz ist eine zweite Änderung, die zur ersten
+gehört. Deshalb wird eine Bearbeitung *geöffnet* (`beginEdit`), über beliebig viele Mutationen
+gehalten und erst am Ende der Interaktion *geschlossen* (`endEdit`):
+
+- Ziehen und Ankerziehen öffnen beim Druck, schließen beim Loslassen.
+- Eine Annotation öffnet beim Setzen und schließt, wenn der Text steht. Sonst nähme der erste
+  Druck auf Undo nur den Text zurück und ließe eine textlose Annotation auf dem Chart — die
+  ist unsichtbar und frisst trotzdem Klicks.
+- Die diskreten Kommandos (löschen, ausblenden, sperren, umfärben, leeren) sind je ein Schritt.
+
+**Schritte, die nichts ändern, werden nicht aufgezeichnet.** `sameSet` vergleicht die
+Zeichnungen paarweise per Referenz — was exakt „unverändert" bedeutet, weil nichts an Ort und
+Stelle mutiert wird. Das zählt für die Interaktionen, die dort enden, wo sie angefangen haben:
+Eine Annotation setzen und den Editor ohne Eingabe schließen fügt eine Zeichnung hinzu und
+entfernt sie wieder, was ein anderes Array mit identischem Inhalt hinterlässt — und ein
+Undo-Schritt, der sichtbar nichts tut, ist schlimmer als keiner.
+
+**Die History gehört zum Symbol** und wird beim Laden geleert. Sonst könnte ein Undo die
+Zeichnungen eines anderen Instruments auf diesen Chart holen — und sie anschließend unter
+diesem Symbol speichern.
+
+Ein Undo mitten in einer halb gezogenen Form wirft diese weg (das Werkzeug bleibt bewaffnet)
+und schließt eine unterbrochene Bearbeitung erst als eigenen Schritt, damit das nächste Undo
+genau den unterbrochenen Zug zurücknimmt. Grenze: 100 Schritte. `test/drawingHistory.test.js`
+fährt das gegen die echte Composable statt gegen eine Nachbildung — das ganze Risiko einer
+Undo-Verwaltung ist, dass ein Kommando vergisst, eine Bearbeitung zu öffnen, und ein Test, der
+die Kommandos nachbaut, vergisst es an denselben Stellen.
+
+### Annotationen
+
+Zehn Werkzeuge, deren Inhalt Wörter sind. Zwei Dinge unterscheiden sie vom Rest.
+
+Erstens ist das Setzen des Ankers nicht das Ende der Geste. Eine Notiz ohne Text ist ein
+unsichtbares Objekt, das trotzdem Klicks frisst — nicht von einem Bug zu unterscheiden. Also
+öffnet sich ein Editor über dem Anker, sobald dieser liegt (`TextEditBox`), und eine leer
+abgebrochene Annotation wird gelöscht statt gespeichert. Ein echtes `<textarea>`, kein auf
+den Chart gemalter Cursor: Auswahl, Undo im Feld, IME, Einfügen und Rechtschreibprüfung
+kommen damit gratis und wären sonst alle nachzubauen.
+
+Zweitens leben zwei von ihnen **nicht in Marktkoordinaten**. Eine verankerte Notiz hängt an
+der Fläche, nicht an einer Bar: Sie ist eine Bildunterschrift zum Chart als Ganzem und muss
+liegen bleiben, wenn darunter gescrollt wird. Diese Specs deklarieren `space: 'screen'` und
+speichern einen Bruchteil der Fläche statt Zeit und Preis. Verschoben werden sie über
+`translateScreen` statt `translateDrawing` — zwei Funktionen statt einer, die ihre Argumente
+je nach Zeichnung umdeutet, denn genau so landet eine Bildunterschrift ein paar tausend Pixel
+außerhalb des Fensters.
+
+Die Flagge ist die einzige Annotation ohne Editor beim Setzen: Sie ist ein Lesezeichen, das
+man über den halben Raum erkennen soll, und jedes Mal nach einer Beschriftung zu fragen
+machte sie langsamer als das, was sie ersetzt. Ihr Text ist über die Objektliste nachzutragen.
+
+### Was in Pixeln gerechnet wird — und warum das ehrlich ist
+
+Harmonische Patterns messen ihre Verhältnisse **im Preis**: Die Aussage „B hat 61,8 % von AB
+zurückgesetzt" darf sich beim Zoomen nicht ändern.
+
+Gann-Werkzeuge, Fib-Kreise, -Spiralen und -Bögen können das nicht. Gann setzt voraus, dass
+eine Preiseinheit so lang ist wie eine Zeiteinheit — auf einem modernen Chart garantiert das
+nichts, beide Achsen sind unabhängig skaliert. Ein Kreis auf einem Chart ist eine Ellipse.
+Diese Werkzeuge nehmen ihre Einheit deshalb **aus der Geste**: Der erste Anker ist der
+Ursprung, der zweite definiert, was eine Einheit ist. Die Formen bewegen sich damit beim
+Zoomen — so verhalten sie sich überall, und die Alternative wäre, ein festes Verhältnis
+zwischen Dollar und Minuten zu erfinden, das unsichtbar falsch wäre.
+
+Dasselbe gilt für den Winkel des Trendwinkel-Werkzeugs: Er wird auf dem Schirm gemessen,
+weil es die Zahl ist, die angeschaut wird.
 
 ### Strichstil
 
@@ -1933,20 +2094,33 @@ Teilen von Strategien dazukommt.
 
 ## 10. Design-System
 
-Die Sprache heißt **„Stille Karten"** und ist der ruhige Nachfahre der „Living Data"-Sprache
-der Katsumii-App; verbindlich in `src/styles/tokens.css` und `base.css`. Drei Regeln tragen sie:
+Die Sprache heißt **„Terminal"** und beschreibt den flachen, fast schwarzen Tisch, der ein
+Handelsterminal ist; verbindlich in `src/styles/tokens.css` und `base.css`. Sie löst „Stille
+Karten" ab, und die drei Regeln sind genau die drei Punkte, an denen die App vorher wie ein
+Dokument statt wie ein Instrument gelesen wurde:
 
-- **Fläche statt Kante.** Ein Rahmen zieht eine Linie, die das Auge lesen muss, bevor es den
-  Inhalt liest. `--brd` ist deshalb transparent, und `--glass` — eine Fläche wenige Prozent
-  neben dem Grund — trennt. Weil die Füllung halbtransparent ist, stapelt sie sich: ein Feld
-  auf einer Karte hebt sich weiter von der Karte ab. Eine Ausnahme bleibt: das Farbfeld
-  (`.swatch`), das ohne Kante im hellen Panel verschwände.
-- **Weite Radien, ein tiefer Schatten.** 22 für Panels, 16 für Karten, 11 für Bedienelemente.
-  Der Schatten ist das Einzige, was ein Panel vom Grund abhebt, also weich und weit.
-- **Sektionsnamen in der Schrift der Wortmarke.** `.k-eyebrow` setzt in Inter Tight 700 auf
-  Lesegröße in gemischter Schreibung — ein Titel, kein Maschinenetikett. Mono bleibt, wo sie
-  hingehört: auf Daten und dem Kleingedruckten daneben. Ganze Sätze bekommen `.k-prose`,
-  nie Mono-Versalien.
+- **Ein Grund, und alles ist darauf gezeichnet.** Keine Karten, die auf einem getönten
+  Hintergrund schweben, kein Ambient-Schimmer, keine Verlaufsflächen. Chrome, Panels und Chart
+  teilen sich denselben Grund und werden von einer Haarlinie getrennt. Abgehoben wird nur, was
+  *vorübergehend über* der App liegt — ein Menü, ein Modal, ein Tooltip —, und mehr darf ein
+  Schatten hier nicht bedeuten. Dafür gibt es genau eine Klasse: `.k-pop`. Eine Kartenklasse
+  existiert nicht mehr; ein Panel ist eine Spalte des Arbeitsbereichs und trägt seine
+  trennende Kante selbst (`border-right` in `.data-panel` und Geschwistern).
+- **Kanten statt Flächen.** Die Vorgängersprache entfernte jeden Rahmen mit dem Argument, eine
+  Fläche trenne genauso gut. Das stimmt — und macht zugleich jedes Bedienelement zu einem
+  weichen Knopf. Ein Terminal wird gelesen, indem man Spalten abscannt, und was eine Spalte zu
+  einer Spalte macht, ist die Haarlinie. `--brd` ist deshalb wieder eine echte Linie, und den
+  Zeiger trägt `--hover`.
+- **Enge Radien, kleine Typo.** 12 für Panels und Menüs, 8 für Karten und Bedienelemente, 6
+  für die kleinen. Labels sind 9–10px Mono-Versalien mit weiter Laufweite (`.k-label`), Werte
+  12–13px, und die eine große Zahl auf dem Schirm ist der Kurs. Ganze Sätze bekommen
+  `.k-prose`, nie Mono-Versalien.
+
+Der Akzent ist **rationiert**. Er markiert die Wortmarke, den zuletzt gehandelten Kurs und
+eine laufende Sitzung — sonst nichts. „Dieses hier ist an" sagt eine graue Füllung
+(`--sel-bg`), und zwar überall: aktiver Timeframe, aktives Werkzeug, aktives Segment. Ein
+Akzent, der überall ist, markiert nichts. Die eine Ausnahme ist `.btn--primary`: die
+Handlung, die in einem Panel etwas festmacht, höchstens eine pro Ansicht.
 
 Schrift steht in vier Tokens (`--font-ui` / `--font-title` / `--font-num` / `--font-mono`)
 und kommt aus zwei Familien: Inter Tight trägt Oberfläche, Titel und Zahlen, DM Mono die
@@ -1962,13 +2136,136 @@ Dazu zwei begründete Abweichungen von Katsumii:
   und bleibt für Rot-Grün-Sehschwäche lesbar. Aufwärts ist hell, abwärts blau; im hellen
   Modus wird „hell" zur hohlen Kerze mit Ink-Kontur, weil Weiß auf weißem Chart verschwindet.
 
-Der Chart ist die eine Fläche, auf der die Panelsprache **nicht** gilt: Kursverlauf ist
-die Figur, der Untergrund bleibt flach und behält seine Kante (`--chart-brd`). Chart-Farben stehen als eigene Tokens
+Der Chart steht auf demselben Grund wie alles andere: In einem Terminal *ist* der Chart der
+Tisch, ein Rahmen darum wäre ein Bilderrahmen. Chart-Farben stehen als eigene Tokens
 (`--candle-*`, `--chart-*`) und werden in `ChartPanel.vue` per `getComputedStyle` gelesen,
-damit ein Theme-Wechsel keine zweite Farbliste pflegen muss.
+damit ein Theme-Wechsel keine zweite Farbliste pflegen muss. Der zuletzt gehandelte Kurs
+bekommt `--chart-price-line`, also den Akzent und eine gestrichelte Linie — er ist das Niveau,
+gegen das jede andere Zahl auf dem Chart gelesen wird. Die Labels des Fadenkreuzes bleiben grau
+(`--chart-label-bg`): Ein Akzent, der dem Zeiger folgt, konkurriert mit dem Kurs, den er misst.
 
-Klassen `k-panel`, `k-eyebrow`, `k-mono-label`, `k-prose`, `k-chip`, `k-note`, `.btn`,
-`.primary-btn`, `.icon-btn` — vor jeder neuen Klasse prüfen, ob eine davon passt.
+Klassen `k-pop`, `k-eyebrow`, `k-label` / `k-mono-label`, `k-prose`, `k-stat`, `k-chip`,
+`k-note`, `k-group`, `.btn` (mit `--default` / `--accent` / `--primary` / `--danger`),
+`.primary-btn`, `.icon-btn`, `.input` — vor jeder neuen Klasse prüfen, ob eine davon passt.
+
+### Vier Bänder, keine Zwischenräume
+
+Das Fenster ist von oben nach unten in vier Bänder geteilt, und `App.vue` hält genau das:
+
+```
+AppNav          wo man ist, und die Schalter, die der ganzen App gehören
+InstrumentBar   welcher Markt, welche Auflösung, welcher Kurs
+workspace       die Ansicht selbst — Panels und Chart, bündig aneinander
+StatusBar       was gerade gilt, in der kleinsten Schrift der App
+```
+
+Die Trennung zwischen den ersten beiden ist der Grund, warum es zwei Zeilen sind und nicht
+eine: „Wo bin ich" und „Was macht BTC" sind verschiedene Fragen, und die alte gemischte Leiste
+musste Wort für Wort gelesen werden, wo diese beiden je auf einen Blick gehen. In `AppNav`
+steht deshalb nichts über den Markt, in `InstrumentBar` nichts über Ansichten.
+
+Der Arbeitsbereich hat **kein** Padding und **keine** Gutter. Die Spalten stoßen aneinander und
+werden von einer Haarlinie getrennt — ein Abstand zwischen Karten macht eine Spalte wieder zu
+einer Insel, und gescannt wird in Spalten. Das gilt auch für Backtest, Auto-Backtest und
+Ergebnisse, die dieselbe Zwei-Spalten-Regel benutzen.
+
+Die Fensterknöpfe des Betriebssystems zeichnet Windows als Overlay über das erste Band. Was der
+App davon übrig bleibt, meldet Electron als `env(titlebar-area-*)`; `AppNav` rechnet sein
+rechtes Padding daraus, statt eine Zahl festzuschreiben, die auf genau einem Rechner stimmt.
+
+Die Trennlinie zwischen zwei Spalten trägt der **Griff** (`PanelToggle`), nicht das Panel. Das
+Panel trug sie zuerst — und setzte die Spaltenkante damit zehn Pixel vor den Chart, nah genug,
+um wie eine Lücke statt wie eine Kante zu wirken. Der Griff bekommt die Linie auf der Seite,
+die zum Chart zeigt, also liegt sie genau dort, wo der Chart anfängt.
+
+### Was der Chart besitzt, aber woanders hingehört: zwei Teleports
+
+Zwei Dinge gehören zum Zeichen-State — und der lebt in `ChartPanel.vue` —, stehen auf dem
+Schirm aber woanders:
+
+- die **Werkzeugschiene** (`DrawingToolbar`) direkt an der Chartkante, aber rechts vom
+  Seitenpanel; Ziel `#tool-rail`, gehalten von `App.vue` als Spalte des Arbeitsbereichs
+  zwischen Panel-Naht und Chart;
+- die **Objektliste** (`ChartObjects`) im Werkzeug-Cluster der Instrumentenleiste; Ziel
+  `#chart-tools`, gehalten von `InstrumentBar`.
+
+Teleportiert statt hochgezogen: Die Komponenten nach oben zu verschieben hieße, Props und
+Events durch `App.vue` zu leiten, das keins davon besitzt und erst etwas über Werkzeuge und
+Zeichnungen lernen müsste, um sie durchzureichen.
+
+Das `defer` an beiden Teleports ist **nicht** optional. Das Ziel wird von Vue im selben
+Durchgang gerendert wie der Chart, und ein gewöhnlicher Teleport löst seinen Selektor gegen das
+Dokument auf, während dieser Durchgang den Baum noch im Speicher aufbaut — er fände also nichts
+und würde warnen. Verzögert läuft die Suche nach dem Zyklus, und da steht der Slot im Dokument.
+
+`#tool-rail` steht in beiden Chart-Ansichten im Markup, weil es keine Stelle vor dem Chart
+gibt, die sich beide Layouts teilen; im DOM ist immer nur ein Zweig, also immer nur ein Slot.
+
+### Drei Dropdowns, eine Hülle
+
+Chart-Stil, Indikatoren und Objekte hängen an der Instrumentenleiste und brauchen alle
+dasselbe: eine Fläche *über* der App, ein Klick woanders schließt, Escape, und eine Position
+unter dem Knopf, der sie geöffnet hat. Das steht einmal in `MenuPopover.vue`.
+
+Positioniert wird gegen den Auslöser, nicht darin verschachtelt: Die Instrumentenleiste
+schneidet ihren Überlauf ab — sie muss, sonst schöbe ein langer Symbolname den Kurs aus der
+Zeile —, und ein absolut positioniertes Menü darin wäre auf Leistenhöhe abgeschnitten.
+`position: fixed` plus gemessenes Rechteck ist der Ausweg, der ihr das Clipping lässt.
+
+### Wie der Kurs gezeichnet wird
+
+`components/chart/chartStyles.js` ist der eine Katalog, den zwei Stellen lesen dürfen, die sich
+nicht widersprechen dürfen: das Menü, das die Stile auflistet, und `ChartPanel`, das die Serie
+baut. Getrennt könnte ein Stil angeboten werden, den der Chart nicht herstellen kann.
+
+Der Wechsel **ersetzt** die Serie, statt sie umzukonfigurieren: Eine Linie ist keine Kerze mit
+anderen Farben. Billig ist das, weil jedes Primitive in diesem Chart bezüglich seiner Serie
+zustandslos ist — `attached` merkt sich drei Referenzen und sonst nichts —, also überleben
+Marken, Zonen und Zeichnungen den Umzug auf eine neue Serie. `mountPriceSeries` hängt sie in
+der Reihenfolge ab, in der sie angehängt waren, und danach wieder an; die Malreihenfolge
+überlebt damit den Stilwechsel.
+
+Nur das Bild ändert sich. Indikatoren, Engine und Legende lesen weiter die echten Bars — die
+Legende ausdrücklich per Binärsuche in `bars` statt über `seriesData`, denn eine Linienserie
+hat kein Open und Heikin Ashi hat ein gemitteltes.
+
+Zwei Stile aus dem Vorbild fehlen mit Absicht. „High-Low" bräuchte einen Balken ohne
+Schlusskurs-Tick, und die Bibliothek kann nur den Eröffnungs-Tick abschalten; „Volume Bars"
+bräuchte einen Renderer, den es hier nicht gibt. Ein fast richtiger Chart ist schlimmer als
+einer, der nicht angeboten wird — er wird als das gelesen, was draufsteht.
+
+### Zeichnungen weglegen statt löschen
+
+Bis hierher war der Papierkorb das Einzige, was eine störende Zeichnung loswurde. Das ist das
+falsche Werkzeug für den Normalfall: Auf einem Chart mit einer Saison Arbeit sind die meisten
+Level richtig und die meisten davon heute nicht gemeint. `hidden` steht deshalb an der
+Zeichnung selbst und wird mitgespeichert — ein Chart, den man heute aufgeräumt hat, ist morgen
+noch aufgeräumt.
+
+Weggelegt heißt weg, nicht blass: `findAt` in `useDrawings` überspringt versteckte Zeichnungen,
+und das Primitive bekommt über `visibleDrawings()` nur die sichtbaren. Eine Linie, die man
+nicht sieht, die aber den Zeiger nimmt, ist der übelste Fehlerbericht überhaupt — auf dem
+Schirm steht nichts, was ihn erklären würde.
+
+Das Auge daneben ist etwas anderes: **alle** Zeichnungen auf einmal weg, für einen Blick auf
+den nackten Kurs. Bewusst nicht persistiert — ein Blick, der einen Neustart überlebt, sähe aus,
+als wäre die Arbeit verloren.
+
+### Der Kurs im Kopf ist der Kurs des Charts
+
+`InstrumentBar` zeigt keinen selbst geholten Preis. Der Chart veröffentlicht die Bar an seinem
+rechten Rand über `session.quote` (`publishQuote` in `ChartPanel.vue`), und der Kopf liest nur.
+
+Das ist keine Bequemlichkeit, sondern die Bedingung dafür, dass der Kopf unter einer laufenden
+Sitzung nicht lügt: Unter einem Replay ist die Bar am rechten Rand die am Abspielkopf und nicht
+die neueste auf der Platte. Ein Kopf, der sich seinen Kurs selbst holte, würde einer Sitzung die
+Zukunft zeigen, die sie nicht sehen darf. Ein Schreiber, also können die beiden nicht
+auseinanderlaufen.
+
+`ChartLegend.vue` beantwortet die andere Frage — was die Bar *unter dem Zeiger* getan hat —
+und liegt deshalb über dem Chart statt in der Chrome: eine Zahl, die sich mit dem Zeiger
+ändert, gehört neben den Zeiger. Ohne Zeiger fällt sie auf dieselbe Bar zurück, die der Kopf
+zitiert. Sie nimmt nie Pointer-Events an.
 
 ### Die Seitenpanele klappen weg
 
@@ -1976,7 +2273,7 @@ Links wird eingerichtet — ein Download, eine Replay-Sitzung —, rechts steht,
 liegt. Beides wird beim Lesen eines Charts seltener gebraucht als der Chart selbst, also lässt
 sich jede Seite wegklappen (`session.panels`, gemerkt in `localStorage` wie das Theme).
 
-Der Griff dafür (`PanelToggle.vue`) ist ein schmaler Streifen in der Lücke zwischen Panel und
+Der Griff dafür (`PanelToggle.vue`) ist eine schmale Naht auf der Kante zwischen Panel und
 Chart, **nicht** ein Knopf im Panel. Ein Knopf im Panel kann es nur schließen; was es wieder
 öffnet, müsste woanders wohnen — zwei Bedienelemente für einen Zustand, an zwei Stellen, von
 denen eine nur manchmal da ist. So ist es eines, immer an derselben Stelle, und der Winkel zeigt,
@@ -2059,9 +2356,11 @@ Fenstererzeugung und IPC-Handler sie teilen können, ohne einander zu importiere
   Chart mit Timeframe-Umschaltung und Nachladen beim Scrollen.
 - **M0.5 — Indikatoren** ✅ Gemeinsames Indikator-Modul, Volume Profile mit POC, Value Area
   und Buy/Sell-Delta, Bedienpanel.
-- **M0.6 — Zeichenwerkzeuge** ✅ Trendlinie, Strahl, horizontale/vertikale Linie, Rechteck,
-  Fibonacci, Messwerkzeug und ein Positionswerkzeug mit Risiko/Chance-Zonen, dessen Richtung
-  aus den Ankern folgt; Auswählen, Verschieben, Ankerpunkte ziehen, Speicherung pro Symbol.
+- **M0.6 — Zeichenwerkzeuge** ✅ 87 Werkzeuge in zehn Familien über eine Tool-Registry:
+  Linien, Kanäle, Pitchforks, Fibonacci, Gann, Patterns, Formen, Annotationen,
+  Prognose/Messung und die beiden Midorii-eigenen. Dazu Magnet (OHLC-Snap in zwei Stärken),
+  Sperren, dauerhafter Zeichenmodus, Mehrfachklick- und Freihandgesten, Undo/Redo über
+  Schnappschüsse, Auswählen, Verschieben, Ankerpunkte ziehen, Speicherung pro Symbol.
 - **M1 — Order-Engine** ✅ Market/Limit/Stop, Klammern mit gegenseitiger Aufhebung, Spread,
   Slippage, Kommission, Teilausführungen und Umkehr, Intrabar-Auflösung über die 1m-Basis,
   Backtest-Loop mit Kennzahlen. Vorgezogen, weil Replay sonst zweimal gebaut würde.

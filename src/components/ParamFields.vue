@@ -124,8 +124,8 @@ function toggleMulti(param, value) {
 }
 .toggle:hover { background: var(--glass-strong); color: var(--txt); }
 .toggle.is-active {
-  border-color: var(--accent-brd);
-  background: var(--accent-bg);
+  border-color: var(--line-strong);
+  background: var(--sel-bg);
   color: var(--txt);
 }
 

@@ -32,7 +32,7 @@ function setWick(value) {
 </script>
 
 <template>
-  <div class="style-bar k-panel">
+  <div class="style-bar k-pop">
     <span class="k-eyebrow">Gap</span>
 
     <div
@@ -111,8 +111,8 @@ function setWick(value) {
 }
 .pick:hover { background: var(--glass-strong); color: var(--txt); }
 .pick.is-active {
-  border-color: var(--accent-brd);
-  background: var(--accent-bg);
-  color: var(--accent);
+  border-color: var(--line-strong);
+  background: var(--sel-bg);
+  color: var(--txt);
 }
 </style>

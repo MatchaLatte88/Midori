@@ -9,67 +9,69 @@ html, body, #app {
   padding: 0;
   overflow: hidden;
 }
+/* The shell is four stacked bands; the workspace is the one that grows.
+   See App.vue. */
+#app { display: flex; flex-direction: column; }
 body {
   background-color: var(--bg);
   color: var(--txt);
   font-family: var(--font-ui);
-  font-size: 13px;
+  font-size: 12.5px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  transition: background-color 0.3s, color 0.3s;
+  transition: background-color 0.2s, color 0.2s;
 }
 button { font: inherit; color: inherit; }
 :focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-  border-radius: 8px;
+  outline: 1.5px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: var(--radius-sm);
 }
 
-/* ─── Ambient blobs (fixed, behind everything) ───────────────────────────── */
-.ambient {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  background:
-    radial-gradient(ellipse 900px 700px at 12% -8%, var(--blob1-clr), transparent 60%),
-    radial-gradient(ellipse 760px 620px at 104% 104%, var(--blob2-clr), transparent 60%);
-  transition: background 0.3s;
-}
-
-/* ─── Panel: one quiet surface, no edge (no backdrop blur) ───────────────── */
-.k-panel {
+/* ─── Popover: the only surface that leaves the ground ───────────────────
+   There is no card class any more, and that is the point of the language. A
+   panel is a column of the workspace — it sits on the same ground as the chart
+   and is separated by a hairline, which is what `.data-panel` and its
+   siblings do for themselves. A shadow means exactly one thing here: this is
+   *temporarily over* the app, and will be gone when you are done with it. */
+.k-pop {
   border-radius: var(--radius);
-  background: var(--panel-bg);
-  box-shadow: var(--panel-shadow);
+  background: var(--surface-2);
+  border: 1px solid var(--brd);
+  box-shadow: var(--pop-shadow);
 }
 
 /* ─── Typography roles ───────────────────────────────────────────────────── */
-/* A section is named, not labelled: the wordmark's face at reading size in
-   mixed case. The rule that used to lead it is gone — the type is enough. */
+/* A section is named, not labelled, and named quietly: this is furniture in a
+   room full of numbers, so it takes the text colour and steps back at small
+   size rather than shouting in the accent. */
 .k-eyebrow {
   display: flex;
   align-items: baseline;
   gap: 8px;
   font-family: var(--font-title);
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 600;
   line-height: 1.3;
-  letter-spacing: -0.01em;
-  color: var(--accent);
+  letter-spacing: 0.01em;
+  color: var(--txt);
 }
-.k-mono-label {
+/* The terminal's own label: mono capitals, wide tracking, one step down in
+   colour. Everything that names a number uses this. */
+.k-mono-label,
+.k-label {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 400;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--sec);
+  color: var(--faint);
+  white-space: nowrap;
 }
 .k-mono-meta {
   font-family: var(--font-mono);
   font-size: 10px;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--sec);
 }
@@ -80,7 +82,7 @@ button { font: inherit; color: inherit; }
   font-size: 12px;
   letter-spacing: 0;
   text-transform: none;
-  line-height: 1.6;
+  line-height: 1.55;
   color: var(--sec);
 }
 .k-num {
@@ -88,6 +90,26 @@ button { font: inherit; color: inherit; }
   font-weight: 600;
   letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
+}
+
+/* ─── Stat: a label with its number under it ──────────────────────────────
+   The unit the instrument bar and the account strip are built out of. Two
+   lines, left aligned, tabular figures — so a row of them reads as a table
+   without being one. */
+.k-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.k-stat > .v {
+  font-family: var(--font-num);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+  color: var(--txt);
+  white-space: nowrap;
 }
 
 /* ─── Chip ───────────────────────────────────────────────────────────────── */
@@ -99,87 +121,108 @@ button { font: inherit; color: inherit; }
   font-size: 9px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--accent);
-  background: var(--accent-bg);
-  border-radius: var(--radius-pill);
-  padding: 3px 10px;
+  color: var(--sec);
+  background: var(--glass);
+  border: 1px solid var(--brd);
+  border-radius: var(--radius-sm);
+  padding: 2px 7px;
 }
+.k-chip--accent { color: var(--accent); background: var(--accent-bg); border-color: var(--accent-brd); }
 
 /* ─── Note: ember-accented callout, max one per view ─────────────────────── */
 .k-note {
-  border-left: 3px solid var(--ember);
+  border: 1px solid var(--brd);
+  border-left: 2px solid var(--ember);
   border-radius: var(--radius-md);
-  padding: 10px 14px;
+  padding: 9px 12px;
   font-size: 12px;
-  line-height: 1.6;
+  line-height: 1.55;
   color: var(--sec);
   background: var(--glass);
 }
+/* Emphasis inside the sentence, not a heading above it: every note in the app
+   uses <b> mid-sentence, and setting it as a block label broke each of them
+   across three lines. */
 .k-note b {
-  display: block;
-  margin-bottom: 2px;
-  font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: 500;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--ember);
+  font-weight: 600;
+  color: var(--txt);
 }
 
 /* ─── Buttons ────────────────────────────────────────────────────────────── */
 .btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  min-height: 34px;
-  padding: 0 14px;
+  min-height: 28px;
+  padding: 0 11px;
   border-radius: var(--radius-sm);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
-  transition: opacity 120ms, border-color 120ms, background 120ms;
+  transition: background 120ms, color 120ms, border-color 120ms;
 }
-.btn:hover:not(:disabled) { opacity: 0.8; }
-.btn:disabled { opacity: 0.4; cursor: default; }
-.btn--sm { min-height: 28px; padding: 0 10px; font-size: 11px; }
-.btn--default { border: 1px solid var(--brd); background: var(--glass); color: var(--txt); }
-.btn--accent  { border: 1px solid transparent; background: var(--accent-bg); color: var(--accent); }
-.btn--accent:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent) 20%, transparent);
-  border-color: var(--accent);
-  opacity: 1;
+.btn:disabled { opacity: 0.35; cursor: default; }
+.btn--sm { min-height: 24px; padding: 0 8px; font-size: 11px; }
+.btn--default {
+  border: 1px solid var(--brd);
+  background: var(--glass);
+  color: var(--sec);
 }
-.btn--danger { border: 1px solid transparent; background: rgba(239,68,68,0.10); color: #ef4444; }
+.btn--default:hover:not(:disabled) { background: var(--glass-strong); color: var(--txt); }
+/* "On", not "look here": a filled grey, the way a terminal marks the timeframe
+   that is showing. The accent is reserved for the live price and the brand. */
+.btn--accent {
+  border: 1px solid var(--brd);
+  background: var(--sel-bg);
+  color: var(--txt);
+}
+.btn--accent:hover:not(:disabled) { background: var(--glass-strong); }
+/* The one action in a panel that commits something. Accent-filled, at most
+   once per view — the grey fill above is for "this one is on", and a screen
+   with two green buttons on it has told you nothing about either. */
+.btn--primary {
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--btn-primary-fg);
+}
+.btn--primary:hover:not(:disabled) { opacity: 0.88; }
 
+.btn--danger {
+  border: 1px solid transparent;
+  background: color-mix(in srgb, var(--neg) 12%, transparent);
+  color: var(--neg);
+}
+.btn--danger:hover:not(:disabled) { background: color-mix(in srgb, var(--neg) 20%, transparent); }
+
+/* The one button in a view that commits something. */
 .primary-btn {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 6px 16px;
-  border-radius: var(--radius-pill);
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 14px;
+  border-radius: var(--radius-md);
   font-family: var(--font-ui);
   font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0;
   background: var(--accent);
   color: var(--btn-primary-fg);
   border: 1px solid var(--accent);
   cursor: pointer;
-  transition: opacity 0.15s, box-shadow 0.2s;
+  transition: opacity 0.15s;
 }
-.primary-btn:hover:not(:disabled) {
-  opacity: 0.92;
-  box-shadow: 0 5px 18px color-mix(in srgb, var(--accent) 32%, transparent);
-}
-.primary-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.primary-btn:hover:not(:disabled) { opacity: 0.88; }
+.primary-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
 /* Icon button — square sibling of .btn--default, used across the chrome */
 .icon-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   flex-shrink: 0;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
@@ -188,35 +231,79 @@ button { font: inherit; color: inherit; }
   cursor: pointer;
   transition: color 120ms, background 120ms, border-color 120ms;
 }
-.icon-btn:hover:not(:disabled) {
-  color: var(--txt);
+.icon-btn:hover:not(:disabled) { color: var(--txt); background: var(--hover); }
+.icon-btn:disabled { opacity: 0.3; cursor: default; }
+.icon-btn.is-active { color: var(--txt); background: var(--sel-bg); }
+.icon-btn svg { width: 15px; height: 15px; stroke-width: 1.6; }
+
+/* ─── Segmented group ────────────────────────────────────────────────────
+   Several controls that belong to one question, in a hairlined trough. The
+   shape the reference terminal builds its whole toolbar out of. */
+.k-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--brd);
+  border-radius: var(--radius-md);
   background: var(--glass);
 }
-.icon-btn:disabled { opacity: 0.35; cursor: default; }
-.icon-btn.is-active { color: var(--accent); background: var(--accent-bg); border-color: var(--accent-brd); }
-.icon-btn svg { width: 16px; height: 16px; stroke-width: 1.5; }
+.k-group .k-divider { margin: 0 3px; }
+
+/* ─── Fields ─────────────────────────────────────────────────────────────
+   Global rather than per panel: half the panels in the app referenced `.input`
+   without ever defining it, so their fields fell back to the browser's own —
+   a white box on a black panel. A few panels do define their own; scoped
+   styles win over these, so nothing they had is taken away. */
+.input,
+select.input,
+textarea.input {
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--brd);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--txt);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  min-width: 0;
+}
+.input--sm { height: 26px; font-size: 11.5px; }
+.input:focus-visible { outline: none; border-color: var(--line-strong); }
+.input::placeholder { color: var(--faint); }
+/* The date picker's own glyph is black-on-black in dark mode. */
+html.dark .input::-webkit-calendar-picker-indicator { filter: invert(1) opacity(0.55); }
+/* Our steppers sit beside the field wherever one is wanted; the browser's
+   would be a second pair. */
+.input[type='number'] { appearance: textfield; -moz-appearance: textfield; }
+.input[type='number']::-webkit-outer-spin-button,
+.input[type='number']::-webkit-inner-spin-button { appearance: none; margin: 0; }
 
 /* ─── Divider ────────────────────────────────────────────────────────────── */
-.k-divider { width: 1px; height: 18px; background: var(--line); flex-shrink: 0; }
+.k-divider { width: 1px; height: 16px; background: var(--line); flex-shrink: 0; }
+.k-rule { height: 1px; background: var(--line); flex-shrink: 0; }
 
 /* ─── Scrollbars ─────────────────────────────────────────────────────────── */
 * { scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) transparent; }
-::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar { width: 9px; height: 9px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--sec) 35%, transparent);
+  background: var(--scroll-thumb);
   border: 3px solid transparent;
   background-clip: content-box;
   border-radius: 999px;
 }
-::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--sec) 55%, transparent); background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--sec) 55%, transparent);
+  background-clip: content-box;
+}
 
 /* ─── Animation ──────────────────────────────────────────────────────────── */
 @keyframes fadeUp {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-.anim-fade-up { animation: fadeUp 0.35s ease both; }
+.anim-fade-up { animation: fadeUp 0.2s ease both; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

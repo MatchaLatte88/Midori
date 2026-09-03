@@ -149,7 +149,7 @@ const money = (v) => (v == null ? '—' : v.toLocaleString(undefined, {
 
 <template>
   <div class="backtest">
-    <section class="k-panel setup">
+    <section class="setup">
       <header class="head">
         <span class="k-eyebrow">Strategy</span>
         <span v-if="session.symbol" class="market k-mono-label">
@@ -208,14 +208,14 @@ const money = (v) => (v == null ? '—' : v.toLocaleString(undefined, {
         <span class="k-eyebrow">Parameters</span>
         <ParamFields :schema="spec.params" :values="params" @update="patch" />
 
-        <button class="btn btn--accent run" :disabled="!canRun" @click="run">
+        <button class="btn btn--primary run" :disabled="!canRun" @click="run">
           {{ running ? 'Running…' : 'Run backtest' }}
         </button>
         <p v-if="!session.symbol" class="warn k-prose">Select a symbol on the chart first.</p>
       </template>
     </section>
 
-    <section class="k-panel result">
+    <section class="result">
       <span class="k-eyebrow">Result</span>
 
       <div v-if="running" class="placeholder k-prose">Running…</div>
@@ -258,9 +258,10 @@ const money = (v) => (v == null ? '—' : v.toLocaleString(undefined, {
 </template>
 
 <style scoped>
+/* Two flush columns with a line between them — the same layout rule the chart
+   views follow. See App.vue. */
 .backtest {
   display: flex;
-  gap: 12px;
   width: 100%;
   height: 100%;
   overflow: hidden;
@@ -272,8 +273,9 @@ const money = (v) => (v == null ? '—' : v.toLocaleString(undefined, {
   gap: 10px;
   width: 332px;
   flex: none;
-  padding: 18px;
+  padding: 16px;
   overflow-y: auto;
+  border-right: 1px solid var(--line);
 }
 
 .result {
@@ -281,7 +283,7 @@ const money = (v) => (v == null ? '—' : v.toLocaleString(undefined, {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 18px;
+  padding: 16px 18px;
   overflow-y: auto;
 }
 /* A stretch item in a column flexbox fills the width; this one is a button. */
@@ -305,7 +307,7 @@ const money = (v) => (v == null ? '—' : v.toLocaleString(undefined, {
   cursor: pointer;
 }
 .strategy:hover { background: var(--glass-strong); }
-.strategy.is-active { border-color: var(--accent-brd); background: var(--accent-bg); }
+.strategy.is-active { border-color: var(--line-strong); background: var(--sel-bg); color: var(--txt); }
 .strategy-name {
   font-family: var(--font-num);
   font-weight: 600;
@@ -328,9 +330,9 @@ const money = (v) => (v == null ? '—' : v.toLocaleString(undefined, {
 .from-sweep {
   margin: 0;
   padding: 7px 9px;
-  border: 1px solid var(--accent-brd);
+  border: 1px solid var(--brd);
   border-radius: var(--radius-sm);
-  background: var(--accent-bg);
+  background: var(--glass);
   color: var(--sec);
   line-height: 1.45;
 }

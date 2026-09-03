@@ -203,6 +203,38 @@ ein Datum. Beides spielt jede Bar durch die Engine, statt den Abspielkopf zu ver
 gefüllt hätte, füllt, und was ausgestoppt worden wäre, ist es. Rückwärts geht nicht: Das Konto
 hat die Bars dahinter gehandelt.
 
+**Die Oberfläche ist ein Terminal**, nicht ein Dokument: ein flacher, fast schwarzer Grund, auf
+dem alles gezeichnet ist, Spalten von Haarlinien getrennt statt von Lücken, und Grün nur dort,
+wo es etwas heißt — die Wortmarke, der zuletzt gehandelte Kurs, eine laufende Sitzung. Oben
+zwei Bänder: die **Navigation** (wo du bist) und darunter die **Instrumentenleiste** — Symbol,
+Timeframe, Replay, der Kurs mit seiner Veränderung, und daneben, was von diesem Markt auf der
+Platte liegt. Ein Klick auf die Symbolkarte öffnet die Suche über alles Heruntergeladene. Unten
+läuft eine schmale **Statusleiste** mit: Ansicht, Markt, Zustand der Sitzung, UTC-Uhr.
+
+Im Chart steht oben links die **Legende** — Symbol, Timeframe, O/H/L/C und Volumen der Bar
+*unter dem Zeiger*; nimmst du den Zeiger weg, zeigt sie wieder die Bar am rechten Rand, also
+denselben Kurs wie der Kopf darüber. Der zuletzt gehandelte Kurs steht als grüne Marke an der
+Preisachse, mit gestrichelter Linie quer über den Chart.
+
+**Wie der Kurs gezeichnet wird**, wählst du im Kerzen-Knopf neben dem Timeframe: Kerze, hohle
+Kerze, Heikin Ashi, Balken, Säulen, Linie, Linie mit Punkten, Stufenlinie, Fläche, Baseline.
+Es ändert sich nur das Bild — Indikatoren, Legende und Replay-Engine lesen weiter die echten
+Bars, auch unter Heikin Ashi, wo die gezeichnete Kerze ein Mittelwert ist und niemand zu ihrem
+Open oder Close gehandelt hat.
+
+Rechts in der Leiste liegen die Werkzeuge:
+
+- **Indicators** öffnet den Katalog als Dropdown — nur die Namen, die Erklärung kommt beim
+  Darüberfahren. Ein Klick legt den Indikator auf den Chart und klappt das rechte Panel auf,
+  wo seine Einstellungen stehen.
+- **Das Auge** nimmt alle Zeichnungen auf einmal vom Chart, für einen Blick auf den nackten
+  Kurs. Das wird nicht gemerkt — beim nächsten Start sind sie wieder da.
+- **Objects** listet alles, was auf diesem Symbol gezeichnet ist, mit Farbe, Art und Preis
+  bzw. Datum. Jede Zeile lässt sich **weglegen statt löschen** (Auge) oder löschen
+  (Papierkorb, mit Rückfrage). Weggelegt heißt weg: nicht anklickbar, nicht ziehbar, nicht
+  auswählbar — und es wird mitgespeichert, ein heute aufgeräumter Chart ist morgen noch
+  aufgeräumt. Ein Klick auf die Zeile holt die Zeichnung zurück und wählt sie aus.
+
 **Der Arbeitsplatz** ist aufgeteilt wie ein Terminal: unter dem Chart ein **Dock** mit
 *Positions*, *Orders* und *History* — eine Zeile je Position mit Einstieg, Stop, Ziel, Risiko,
 Ergebnis in $ und in R und den Knöpfen dahinter (Manage, Reverse, ×). Rechts in der Reiterzeile
@@ -331,9 +363,44 @@ die Zeilen, die gleich geblieben sind.
 
 ## Zeichenwerkzeuge
 
-Links am Chart: Trendlinie, Strahl, horizontale und vertikale Linie, Rechteck, Fibonacci-
-Retracement, Messwerkzeug sowie Long- und Short-Position. Werkzeug waehlen, ziehen, fertig —
-danach springt die Leiste zurueck auf den Cursor.
+Links am Chart, 87 Werkzeuge in zehn Familien. Die Schiene zeigt pro Familie einen Knopf mit
+dem zuletzt benutzten Werkzeug; die Ecke unten rechts (oder langes Druecken) klappt die
+Familie auf.
+
+| Familie | Enthalten |
+|---|---|
+| Linien | Trendlinie, Strahl, verlaengerte Linie, Info-Linie, Trendwinkel, horizontale Linie und horizontaler Strahl, vertikale Linie, Kreuzlinie, Pfeil, vier Pfeilmarker |
+| Kanaele | paralleler Kanal, unabhaengiger Kanal, flache Ober-/Unterkante, Regressionskanal |
+| Pitchforks | Andrews, Schiff, modifizierter Schiff, Inside, Pitchfan |
+| Fibonacci | Retracement, trendbasierte Extension, Kanal, Zeitzonen, trendbasierte Zeit, Kreise, Speed-Resistance-Boegen und -Faecher, Keil, Spirale |
+| Gann | Box, Faecher, Quadrat, festes Quadrat |
+| Patterns | XABCD, Cypher, ABCD, SKS, Dreieck, Three Drives, fuenf Elliott-Zaehlungen, zyklische Linien, Zeitzyklen, Sinuslinie |
+| Formen | Rechteck, gedrehtes Rechteck, Kreis, Ellipse, Dreieck, Polylinie, Pfad, Pinsel, Textmarker, Kurve, Bogen, Doppelkurve |
+| Annotationen | Text, verankerter Text, Notiz, verankerte Notiz, Callout, Kommentar, Wegweiser, Flagge, Sticker, Preis-Label, Preis-Notiz |
+| Prognose & Messung | Position, Messwerkzeug, Datums-/Preis-/kombinierte Spanne, Preis-pro-Bar, Forecast, Projektion, Bars-Pattern, Ghost Feed, Anchored VWAP |
+| Midorii | Fair Value Gap (rastet auf die Luecke ein), Range Volume Profile |
+
+Werkzeug waehlen, ziehen, fertig — danach springt die Leiste zurueck auf den Cursor. Wer
+zwanzig Gaps hintereinander markiert, schaltet den Zeichenmodus fest (Knopf unter dem
+Magneten). Werkzeuge mit mehreren Ankern werden Klick fuer Klick gesetzt; Polylinie und Pfad
+laufen bis zum Doppelklick oder `Enter`, `Esc` bricht ab.
+
+**Magnet** (Knopf oder Taste `M`): rastet auf das naechste Open, High, Low oder Close der Bar
+unter dem Zeiger ein — und auf deren Zeitstempel. Schwach greift nur in der Naehe, stark
+immer.
+
+**Sperren**: eine gesperrte Zeichnung bleibt sichtbar, aber der Zeiger geht durch sie hindurch.
+Ein Chart, dessen Struktur steht, verrutscht nicht mehr aus Versehen. Einzeln in der
+Objektliste, alle zusammen ueber die Schiene.
+
+**Rueckgaengig** mit `Strg+Z`, vorwaerts mit `Strg+Umschalt+Z` oder `Strg+Y`; die beiden
+Pfeile unten an der Schiene tun dasselbe. Ein Schritt ist eine Handlung, keine Mausbewegung:
+Ein Level quer ueber den Chart zu ziehen ist ein Schritt, und eine Notiz zu setzen und zu
+beschriften ebenfalls. 100 Schritte, pro Symbol.
+
+**Annotationen** oeffnen beim Setzen ein Eingabefeld; ohne Text werden sie wieder verworfen.
+Verankerter Text und verankerte Notiz haengen an der Flaeche statt an einer Bar und bleiben
+liegen, wenn der Chart darunter gescrollt wird.
 
 **Position**: vom Entry zum Stop ziehen — nach unten ergibt einen Long, nach oben einen Short.
 Das Ziel setzt sich auf 2R und ist danach frei verschiebbar wie die anderen beiden Anker. Die
@@ -398,17 +465,24 @@ src/
   components/chart/ fvgPrimitive.js, sessionPrimitive.js, huntPrimitive.js, setupPrimitive.js
   components/chart/ replayPrimitive.js — Positionen, wartende Orders, erledigte Trades
   components/chart/ replayLevels.js — was im Chart greifbar ist, und welche Drops abgelehnt werden
-  components/chart/drawings/  Geometrie, Modell, Rendering und Maussteuerung
-  components/       LineStyleBar, PositionStyleBar — Stilleisten über dem Chart
+  components/chart/drawings/  Geometrie, Vokabular, Registry, Rendering, Maussteuerung
+  components/chart/drawings/tools/  die 87 Werkzeug-Definitionen, nach Familie
+  components/       LineStyleBar, PositionStyleBar, TextStyleBar — Stilleisten über dem Chart
+  components/       TextEditBox — das Eingabefeld einer Annotation, ToolIcon — die Werkzeug-Icons
   components/       BacktestPanel, ResultsPage — Läufe starten und vergleichen
   components/       ReplayBar, ReplayPanel — Transport und die drei Reiter der Seitenspalte
   components/       TradeDock — Positionen, Orders und Historie unter dem Chart
   components/       TradeManager, OrderTicket — eine Position verwalten, eine neue eröffnen
   components/       ChartContextMenu — Rechtsklick-Menü über dem Chart
-  stores/session.js Symbol, Timeframe, Bibliothek, aktive Indikatoren
+  components/       AppNav, InstrumentBar, StatusBar — die drei Bänder der Chrome
+  components/       ChartLegend, SymbolPicker — Bar unter dem Zeiger, Markt wechseln
+  components/       ChartStyleMenu, IndicatorMenu, ChartObjects — die drei Dropdowns
+  components/       MenuPopover — die Hülle, in der alle drei sitzen
+  components/chart/ chartStyles.js — die zehn Formen, die dieselben Bars annehmen können
+  stores/session.js Symbol, Timeframe, Bibliothek, aktive Indikatoren, Kurs am rechten Rand
   stores/replay.js  Abspielkopf, Fenster, Minuten-Cache, Order-Aktionen, Risiko in R
   format.js         wie Geld, Preise, Größen und R geschrieben werden
-  styles/           Katsumii „Living Data" — tokens.css, base.css, fonts.css
+  styles/           Designsprache „Terminal" — tokens.css, base.css, fonts.css
 scripts/            Werkzeuge: Smoke-Test, Backtest-Runner, Versions-Sync
 test/               node:test — Store, Aggregation, Parser, Indikatoren, Profil, Engine,
                     Replay, Vergleich, Zeichnungen, Versionierung

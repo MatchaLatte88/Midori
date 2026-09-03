@@ -55,7 +55,7 @@ function onKey(event) {
   <Teleport to="body">
     <div v-if="props.open" class="backdrop" @click.self="emit('cancel')">
       <div
-        class="modal k-panel"
+        class="modal k-pop"
         role="alertdialog"
         aria-modal="true"
         :aria-label="props.title"
@@ -89,7 +89,7 @@ function onKey(event) {
   display: grid;
   place-items: center;
   padding: 40px 20px;
-  background: rgba(2, 6, 16, 0.45);
+  background: rgba(0, 0, 0, 0.55);
 }
 .modal {
   display: flex;
@@ -97,7 +97,6 @@ function onKey(event) {
   gap: 6px;
   width: min(400px, 100%);
   padding: 18px 20px 16px;
-  background: linear-gradient(160deg, var(--tile-bg), var(--tile-bg));
 }
 
 .title {

@@ -166,7 +166,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="transport k-panel" :class="{ 'is-idle': !replay.active }">
+  <div class="transport" :class="{ 'is-idle': !replay.active }">
     <button
       class="btn btn--sm"
       :class="replay.playing ? 'btn--default' : 'btn--accent'"
@@ -304,12 +304,17 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+/* The transport is chrome, so it is built like chrome: a band across the top
+   of the stage with a hairline under it, not a floating strip. */
 .transport {
   display: flex;
   align-items: center;
   gap: 8px;
   flex: none;
-  padding: 6px 10px;
+  height: 40px;
+  padding: 0 10px;
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--line);
 }
 .transport.is-idle { opacity: 0.75; }
 .spacer { flex: 1; }
@@ -353,7 +358,7 @@ onBeforeUnmount(() => {
   transition: color 0.15s, background 0.15s;
 }
 .speed-btn:hover:not(:disabled) { color: var(--txt); }
-.speed-btn.is-active { color: var(--accent); background: var(--accent-bg); }
+.speed-btn.is-active { color: var(--txt); background: var(--sel-bg); }
 .speed-btn:disabled { opacity: 0.4; cursor: default; }
 
 .ended { color: var(--accent); }

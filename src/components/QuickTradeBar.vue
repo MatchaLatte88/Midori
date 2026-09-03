@@ -65,7 +65,7 @@ function send(side) {
 </script>
 
 <template>
-  <div class="quick-bar k-panel">
+  <div class="quick-bar k-pop">
     <button
       class="side buy"
       :disabled="!canSend"

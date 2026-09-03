@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
-import { CandlestickSeries, HistogramSeries, LineSeries, createChart } from 'lightweight-charts';
+import { HistogramSeries, LineSeries, createChart } from 'lightweight-charts';
+import { chartStyle, styleEncoder } from './chart/chartStyles.js';
 import { INDICATORS, computeIndicator } from '../../shared/indicators/index.js';
 import { VolumeProfilePrimitive } from './chart/volumeProfilePrimitive.js';
 import { FvgPrimitive } from './chart/fvgPrimitive.js';
@@ -23,13 +24,20 @@ import ConfirmModal from './ConfirmModal.vue';
 import DrawingToolbar from './DrawingToolbar.vue';
 import PositionStyleBar from './PositionStyleBar.vue';
 import LineStyleBar from './LineStyleBar.vue';
+import TextStyleBar from './TextStyleBar.vue';
+import TextEditBox from './TextEditBox.vue';
 import FvgToolBar from './FvgToolBar.vue';
 import QuickTradeBar from './QuickTradeBar.vue';
+import ChartLegend from './ChartLegend.vue';
+import ChartObjects from './ChartObjects.vue';
 import { ENTRY, STOP, TARGET, isPositionTool } from './chart/drawings/model.js';
+import { TOOLS, specFor, styleKind } from './chart/drawings/registry.js';
 import { orderFromPlan } from '../../shared/engine/plannedTrade.js';
 import { barIndexAt } from '../../shared/engine/replaySession.js';
 import { latestPage, prependBars, previousPage } from './chart/barPaging.js';
-import { datasetFor, session, setError, setVolumeProfile } from '../stores/session.js';
+import {
+  datasetFor, session, setError, setQuote, setVolumeProfile,
+} from '../stores/session.js';
 import {
   cancelOrder, closePosition, deliverPrice, modifyOrder, openTradeManager, placeFromPlan,
   protectPosition, replay, replayMarks, selectPosition, takeEnteredPlans,
@@ -50,6 +58,10 @@ const status = ref('');
 const chart = shallowRef(null);
 const candles = shallowRef(null);
 const volume = shallowRef(null);
+
+/* Everything painted on top of the price series, in paint order. Held so a
+ * change of chart style can move them to the new series. */
+let primitives = [];
 
 let bars = [];          // ascending, seconds-based, as handed to the series
 let earliestMs = null;  // left edge currently loaded
@@ -86,18 +98,32 @@ const draw = useDrawings({
   series: () => candles.value,
   bars: () => bars,
   symbol: () => props.symbol,
+  /* Two tools work something out while painting that the pointer layer cannot
+   * recompute — an anchored VWAP's curve costs a pass over every bar. The
+   * renderer keeps it; this is how the hit test reaches it. */
+  cacheFor: (id) => drawPrimitive?.cacheFor(id),
   onError: setError,
 });
 
 const overlayEl = ref(null);
 const hasSelection = computed(() => draw.selectedId.value !== null);
 
-/* Which destructive action is waiting on an answer: 'one', 'all', or null.
- * A string rather than two booleans, because the two prompts can never be
- * open at once and two flags could disagree about that. */
+/* Which destructive action is waiting on an answer: 'one', 'all', a drawing's
+ * id, or null. One slot rather than a flag per prompt, because two of these can
+ * never be open at once and two flags could disagree about that. */
 const pendingDelete = ref(null);
 
 const drawingCount = computed(() => draw.drawings.value.length);
+
+/* What the delete prompt is about to remove, named. "Trend line" is a warning;
+ * "the selected drawing" is a sentence about the UI. */
+const pendingName = computed(() => {
+  const what = pendingDelete.value;
+  const id = what === 'one' ? draw.selectedId.value : what;
+  const drawing = draw.drawings.value.find((d) => d.id === id);
+  if (!drawing) return 'The selected drawing';
+  return TOOLS.find((t) => t.id === drawing.type)?.name ?? 'The drawing';
+});
 
 /* The chart's one line of feedback. Loading and data problems come from
  * `status`; the drawing tools add their own — a gap tool that found no gap
@@ -113,12 +139,30 @@ const selectedPosition = computed(() => {
   return selected && isPositionTool(selected.type) ? selected : null;
 });
 
-/* The stroke bar covers everything that is not a position block. The two are
- * mutually exclusive by construction, so they can share a corner. */
+/* The stroke bar covers the plain shapes, and the text bar the annotations.
+ * The three are mutually exclusive by construction — the registry gives every
+ * tool exactly one style kind — so they can share a corner. */
 const selectedLine = computed(() => {
   const selected = draw.drawings.value.find((d) => d.id === draw.selectedId.value);
-  return selected && !isPositionTool(selected.type) ? selected : null;
+  return selected && styleKind(selected.type) === 'line' ? selected : null;
 });
+
+const selectedText = computed(() => {
+  const selected = draw.drawings.value.find((d) => d.id === draw.selectedId.value);
+  return selected && styleKind(selected.type) === 'text' ? selected : null;
+});
+
+/** The annotation being typed into, if any — the editor needs its current text. */
+const editingDrawing = computed(() => {
+  const target = draw.editing.value;
+  return target ? draw.drawings.value.find((d) => d.id === target.id) ?? null : null;
+});
+
+/* Whether the whole set is locked, for the rail's padlock. An empty chart reads
+ * as unlocked: there is nothing to release. */
+const allLocked = computed(() => (
+  draw.drawings.value.length > 0 && draw.drawings.value.every((d) => d.locked)
+));
 
 const TF_MS = {
   '1m': 60_000, '5m': 300_000, '15m': 900_000, '30m': 1_800_000,
@@ -135,6 +179,8 @@ function palette() {
     text: v('--chart-text'),
     border: v('--chart-brd'),
     cross: v('--chart-cross'),
+    priceLine: v('--chart-price-line'),
+    labelBg: v('--chart-label-bg'),
     upBody: v('--candle-up-body'),
     upBrd: v('--candle-up-brd'),
     upWick: v('--candle-up-wick'),
@@ -143,6 +189,10 @@ function palette() {
     downWick: v('--candle-down-wick'),
     volUp: v('--vol-up'),
     volDown: v('--vol-down'),
+    areaTop: v('--chart-area-top'),
+    areaBottom: v('--chart-area-bottom'),
+    downFillSoft: v('--chart-down-soft'),
+    downFillStrong: v('--chart-down-strong'),
     ind: [1, 2, 3, 4, 5].map((i) => v(`--ind-${i}`)),
   };
 }
@@ -156,19 +206,49 @@ function applyTheme() {
     rightPriceScale: { borderColor: p.border },
     timeScale: { borderColor: p.border },
     crosshair: {
-      vertLine: { color: p.cross, labelBackgroundColor: p.downBody },
-      horzLine: { color: p.cross, labelBackgroundColor: p.downBody },
+      vertLine: { color: p.cross, labelBackgroundColor: p.labelBg },
+      horzLine: { color: p.cross, labelBackgroundColor: p.labelBg },
     },
   });
   candles.value?.applyOptions({
-    upColor: p.upBody,
-    downColor: p.downBody,
-    borderUpColor: p.upBrd,
-    borderDownColor: p.downBrd,
-    wickUpColor: p.upWick,
-    wickDownColor: p.downWick,
-    borderVisible: true,
+    ...chartStyle(session.chartStyle).options(p),
+    /* The last price gets the accent and a dashed line, because it is the one
+       level every other number on the chart is read against. Left to itself
+       the label takes the last bar's colour, which makes the most important
+       number on the axis change colour with the last bar. */
+    priceLineColor: p.priceLine,
+    priceLineStyle: 2,
+    priceLineWidth: 1,
   });
+}
+
+/**
+ * Builds the price series for the chosen style, and hangs everything on it.
+ *
+ * Recreated rather than reconfigured, because the styles are different series
+ * types — a line is not a candlestick with different colours. What makes that
+ * cheap is that every primitive in this chart is stateless about its series:
+ * `attached` stores three references and nothing else, so the marks, zones and
+ * drawings they hold survive being moved to a new one.
+ *
+ * The primitives are detached before the old series goes, in the order they
+ * were attached, so nothing is left pointing at a series that has been removed.
+ */
+function mountPriceSeries() {
+  const style = chartStyle(session.chartStyle);
+  const previous = candles.value;
+
+  if (previous) {
+    for (const primitive of primitives) previous.detachPrimitive(primitive);
+    chart.value.removeSeries(previous);
+  }
+
+  candles.value = chart.value.addSeries(style.series, {});
+  for (const primitive of primitives) candles.value.attachPrimitive(primitive);
+
+  applyTheme();
+  // The new series has no data of its own, and wants it in its own shape.
+  if (bars.length > 0) render();
 }
 
 function toSeries(raw) {
@@ -204,9 +284,17 @@ function buildIndicatorBars() {
   indicatorBars = bars.map((b) => ({ ...b, time: b.time * 1000 }));
 }
 
+/* Turns bars into whatever shape the chosen style draws.
+ *
+ * Rebuilt whenever the style or the window changes, and kept between renders
+ * because Heikin Ashi's next bar depends on the one before it — see
+ * `styleEncoder`. Every other style ignores that and maps one bar at a time. */
+let encoder = styleEncoder('candle');
+
 function render() {
   const p = palette(); // once per render, not once per bar
-  candles.value.setData(bars.map(({ volume: _v, ...b }) => b));
+  encoder = styleEncoder(session.chartStyle, p);
+  candles.value.setData(encoder.data(bars));
   volume.value.setData(bars.map((b) => ({
     time: b.time,
     value: b.volume,
@@ -214,6 +302,34 @@ function render() {
   })));
   buildIndicatorBars();
   syncIndicators();
+  publishQuote();
+}
+
+/**
+ * Hands the bar at the right edge to the header above the chart.
+ *
+ * From `bars` and nowhere else, so the price in the instrument bar is by
+ * construction the last candle on the screen — under a replay that is the bar
+ * at the playhead, not the newest bar on disk, and a header that fetched its
+ * own price would be quietly showing the future.
+ */
+function publishQuote() {
+  const last = bars[bars.length - 1];
+  if (!last) {
+    setQuote(null);
+    return;
+  }
+  const prev = bars[bars.length - 2] ?? null;
+  setQuote({
+    // Back to milliseconds: the series holds seconds, everything else does not.
+    time: last.time * 1000,
+    open: last.open,
+    high: last.high,
+    low: last.low,
+    close: last.close,
+    volume: last.volume,
+    prevClose: prev ? prev.close : null,
+  });
 }
 
 /* ─── Replay ────────────────────────────────────────────────────────────────
@@ -278,6 +394,7 @@ function applyReplayBars() {
     candles.value?.setData([]);
     volume.value?.setData([]);
     syncIndicators();
+    setQuote(null);
     return;
   }
 
@@ -289,15 +406,16 @@ function applyReplayBars() {
     const p = palette();
     bars.push(bar);
     indicatorBars.push({ ...bar, time: bar.time * 1000 });
-    candles.value.update({
-      time: bar.time, open: bar.open, high: bar.high, low: bar.low, close: bar.close,
-    });
+    // Through the encoder, so the appended bar continues the sequence the last
+    // full render left off at rather than starting a new one.
+    candles.value.update(encoder.point(bar));
     volume.value.update({
       time: bar.time,
       value: bar.volume,
       color: bar.close >= bar.open ? p.volUp : p.volDown,
     });
     syncIndicators();
+    publishQuote();
   } else {
     bars = toSeries(full.slice(0, wanted));
     earliestMs = full[0].time;
@@ -1151,6 +1269,7 @@ async function loadInitial() {
     candles.value?.setData([]);
     volume.value?.setData([]);
     syncIndicators();
+    setQuote(null);
     return;
   }
 
@@ -1289,6 +1408,14 @@ function onOverlayMove(event) {
   syncDrawings();
 }
 
+/* A double-click ends a polyline or a path. The press that starts it has
+ * already added its anchor, which is what the user meant — the last corner —
+ * so finishing here keeps it rather than dropping it. */
+function onOverlayDouble(event) {
+  if (event.button !== 0) return;
+  if (draw.finishPending()) syncDrawings();
+}
+
 function onOverlayUp(event) {
   if (event.button !== 0) return;
   if (overlayEl.value.hasPointerCapture(event.pointerId)) {
@@ -1323,6 +1450,58 @@ function onOverlayUp(event) {
 /* Hit testing runs on plain mousemove over the chart host, which reaches this
  * handler even through the transparent overlay. That is what lets the overlay
  * stay out of the way until the pointer is actually over a drawing. */
+/**
+ * The bar under the crosshair, for the legend in the corner.
+ *
+ * Read off the series rather than off `bars`, because the series is what the
+ * crosshair is actually pointing at — a lookup by index would have to repeat
+ * the mapping from a pixel to a bar that the chart has already done, and would
+ * disagree with it at the edges.
+ *
+ * Null whenever the pointer is off the chart, which is what makes the legend
+ * fall back to the bar at the right edge.
+ */
+const hoverBar = ref(null);
+
+function onCrosshairMove(param) {
+  if (!param?.time || !param.point) {
+    hoverBar.value = null;
+    return;
+  }
+  /* Off `bars` rather than off the series. The series holds whatever the
+   * chosen style draws — a single value for a line, an average for Heikin
+   * Ashi — and the legend has to say what the market did, not what the picture
+   * shows. It is also the only source that still has an open and a high when
+   * the style is a line. */
+  const bar = barAt(param.time);
+  hoverBar.value = bar ? {
+    time: bar.time * 1000,
+    open: bar.open,
+    high: bar.high,
+    low: bar.low,
+    close: bar.close,
+    volume: bar.volume ?? null,
+  } : null;
+}
+
+/**
+ * The bar at a given time, by binary search.
+ *
+ * A scan would be run on every pointer move over a window that is a couple of
+ * thousand bars, which is the one place in this component where that shows.
+ */
+function barAt(time) {
+  let lo = 0;
+  let hi = bars.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (bars[mid].time === time) return bars[mid];
+    if (bars[mid].time < time) lo = mid + 1;
+    else hi = mid - 1;
+  }
+  return null;
+}
+
 function onHostMove(event) {
   if (!overlayEl.value || levelDrag.value || orderDrag.value) return;
   const p = localPoint(event);
@@ -1371,17 +1550,102 @@ function onLineStyle(patch) {
   syncDrawings();
 }
 
+/* Colour goes through setColor for the same reason as above; the rest are
+ * per-annotation settings that also arm themselves for the next one. */
+function onTextStyle(patch) {
+  if (patch.color !== undefined) draw.setColor(patch.color);
+  const { color, ...rest } = patch;
+  if (Object.keys(rest).length > 0) draw.setTextStyle(rest);
+  syncDrawings();
+}
+
+function onTextCommit(value) {
+  draw.commitText(value);
+  syncDrawings();
+}
+
+function onTextCancel() {
+  draw.cancelText();
+  syncDrawings();
+}
+
+function onTextEdit(id) {
+  draw.editText(id);
+  syncDrawings();
+}
+
+function onToolbarMagnet() {
+  draw.cycleMagnet();
+}
+
+function onUndo() {
+  if (draw.undo()) syncDrawings();
+}
+
+function onRedo() {
+  if (draw.redo()) syncDrawings();
+}
+
+function onToolbarStay() {
+  draw.setStayArmed(!draw.stayArmed.value);
+}
+
+function onToolbarLockAll() {
+  draw.setAllLocked(!allLocked.value);
+  syncDrawings();
+}
+
+/** Whether the user is typing somewhere a keystroke must not be stolen from. */
+function inTextField() {
+  const tag = document.activeElement?.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+}
+
 function onKeyDown(event) {
   if (event.key === 'Escape') {
+    // The annotation editor owns Escape while it is open; it stops the event
+    // itself, so reaching here means there is no editor to close.
     draw.cancelGesture();
     draw.setTool('cursor');
     syncDrawings();
     return;
   }
+  /* Undo and redo. Never while a field has focus: a textarea has its own undo
+   * stack, and taking Ctrl+Z off it to move a level somewhere else on the chart
+   * would be the wrong answer to the keystroke every time. */
+  if ((event.ctrlKey || event.metaKey) && !inTextField()) {
+    const key = event.key.toLowerCase();
+    if (key === 'z' && !event.shiftKey) {
+      event.preventDefault();
+      onUndo();
+      return;
+    }
+    if (key === 'y' || (key === 'z' && event.shiftKey)) {
+      event.preventDefault();
+      onRedo();
+      return;
+    }
+  }
+  /* Enter ends an open-ended shape — a polyline has no last click, so
+   * something has to say when it is done. Only when one is actually being
+   * built, or Enter would be stolen from every form in the app. */
+  if (event.key === 'Enter' && !inTextField()) {
+    if (draw.finishPending()) {
+      event.preventDefault();
+      syncDrawings();
+    }
+    return;
+  }
+  // A one-key magnet, the way every terminal has one. Not while typing, and
+  // not as part of a shortcut.
+  if ((event.key === 'm' || event.key === 'M') && !event.ctrlKey && !event.metaKey
+    && !event.altKey && !inTextField()) {
+    draw.cycleMagnet();
+    return;
+  }
   if (event.key === 'Delete' || event.key === 'Backspace') {
     // Never steal the key from a field the user is typing in.
-    const tag = document.activeElement?.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if (inTextField()) return;
     if (draw.deleteSelected()) {
       event.preventDefault();
       syncDrawings();
@@ -1392,7 +1656,9 @@ function onKeyDown(event) {
 /** Pushes the current drawing state into the primitive and repaints. */
 function syncDrawings() {
   drawPrimitive?.update({
-    drawings: draw.drawings.value,
+    // What is on the chart, not what is stored: a drawing that has been put
+    // away is not painted and, in useDrawings.findAt, cannot be grabbed either.
+    drawings: draw.visibleDrawings(),
     draft: draw.draft.value,
     selectedId: draw.selectedId.value,
   });
@@ -1441,7 +1707,57 @@ function confirmDelete() {
   pendingDelete.value = null;
   if (what === 'one') draw.deleteSelected();
   else if (what === 'all') draw.clearAll();
+  else if (what) draw.remove(what);
   syncDrawings();
+}
+
+/* ─── The object list ──────────────────────────────────────────────────────
+ *
+ * The list lives in the instrument bar and the drawings live here, so the
+ * component is teleported up and these are what it calls back into. Each of
+ * them ends in `syncDrawings`, which is what actually moves the picture: the
+ * primitive is handed the visible set, so hiding and showing go through the
+ * same one path a delete does.
+ */
+
+function onObjectToggle(id) {
+  draw.toggleHidden(id);
+  syncDrawings();
+}
+
+function onObjectLock(id) {
+  draw.toggleLocked(id);
+  syncDrawings();
+}
+
+function onObjectsToggleAll() {
+  draw.setAllHidden(!draw.allHidden.value);
+  syncDrawings();
+}
+
+/**
+ * Points the chart at a drawing from the list.
+ *
+ * Arms the cursor on the way, because a selection made while a tool is armed
+ * is cleared by the next click — which would make picking something out of the
+ * list look like it had done nothing. A drawing that is put away is brought
+ * back first: selecting something invisible would show handles floating on
+ * their own.
+ */
+function onObjectSelect(id) {
+  const drawing = draw.drawings.value.find((d) => d.id === id);
+  if (!drawing) return;
+  if (draw.allHidden.value) draw.setAllHidden(false);
+  if (drawing.hidden) draw.setHidden(id, false);
+  draw.setTool('cursor');
+  draw.selectedId.value = id;
+  syncDrawings();
+}
+
+/* Through the same prompt every other removal in the app goes through — see
+ * ConfirmModal. The id is what is pending, so the modal can name it. */
+function onObjectRemove(id) {
+  pendingDelete.value = id;
 }
 
 onMounted(() => {
@@ -1454,7 +1770,6 @@ onMounted(() => {
     localization: { locale: 'en-GB' },
   });
 
-  candles.value = chart.value.addSeries(CandlestickSeries, {});
   volume.value = chart.value.addSeries(HistogramSeries, {
     priceFormat: { type: 'volume' },
     priceScaleId: 'volume',
@@ -1464,40 +1779,42 @@ onMounted(() => {
   });
 
   fvgPrimitive = new FvgPrimitive();
-  candles.value.attachPrimitive(fvgPrimitive);
 
   rangePrimitive = new RangeProfilePrimitive();
   rangePrimitive.project = draw.project;
-  candles.value.attachPrimitive(rangePrimitive);
 
   rangeIndicatorPrimitive = new RangePrimitive();
-  candles.value.attachPrimitive(rangeIndicatorPrimitive);
-
   sessionPrimitive = new SessionPrimitive();
-  candles.value.attachPrimitive(sessionPrimitive);
-
   huntPrimitive = new HuntPrimitive();
-  candles.value.attachPrimitive(huntPrimitive);
-
   setupPrimitive = new SetupPrimitive();
-  candles.value.attachPrimitive(setupPrimitive);
 
   vpPrimitive = new VolumeProfilePrimitive({
     width: session.volumeProfile.width,
     showLabels: session.volumeProfile.showLabels,
     mode: session.volumeProfile.mode,
   });
-  candles.value.attachPrimitive(vpPrimitive);
 
   replayPrimitive = new ReplayPrimitive();
-  candles.value.attachPrimitive(replayPrimitive);
 
   drawPrimitive = new DrawingPrimitive();
   drawPrimitive.project = draw.project;
   drawPrimitive.barsBetween = draw.barsBetween;
-  candles.value.attachPrimitive(drawPrimitive);
+  // The regression channel, the anchored VWAP and the bars pattern are fitted
+  // to the data rather than to the anchors, so they need the bars themselves.
+  drawPrimitive.bars = () => bars;
+
+  /* Paint order, back to front: context first, then what is live, then what is
+   * being drawn by hand. The list is what `mountPriceSeries` re-attaches, so
+   * the order survives a change of chart style. */
+  primitives = [
+    fvgPrimitive, rangePrimitive, rangeIndicatorPrimitive, sessionPrimitive,
+    huntPrimitive, setupPrimitive, vpPrimitive, replayPrimitive, drawPrimitive,
+  ];
+
+  mountPriceSeries();
 
   host.value.addEventListener('mousemove', onHostMove);
+  chart.value.subscribeCrosshairMove(onCrosshairMove);
   window.addEventListener('keydown', onKeyDown);
   chart.value.subscribeClick(onChartClick);
 
@@ -1523,15 +1840,25 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  /* The header reads this, and the header outlives the chart. A price left
+     behind would sit above a view that is no longer showing it. */
+  setQuote(null);
   clearTimeout(profileTimer);
   clearTimeout(rangeTimer);
   chart.value?.unsubscribeClick(onChartClick);
+  chart.value?.unsubscribeCrosshairMove(onCrosshairMove);
   themeObserver?.disconnect();
   host.value?.removeEventListener('mousemove', onHostMove);
   window.removeEventListener('keydown', onKeyDown);
   chart.value?.remove();
   chart.value = null;
   indicatorSeries.clear();
+});
+
+/* A different shape for the same bars: the series is replaced, the primitives
+ * move across with it, and nothing about the window or the account changes. */
+watch(() => session.chartStyle, () => {
+  if (chart.value) mountPriceSeries();
 });
 
 watch(() => [props.symbol, props.timeframe], loadInitial);
@@ -1596,24 +1923,77 @@ defineExpose({ reload: loadInitial });
 </script>
 
 <template>
-  <div class="chart-area">
+  <!-- The rail belongs to the drawing state, which lives here, but it belongs
+       on the screen at the left edge of the workspace — outside the side panel,
+       the way a terminal keeps it. Teleported rather than lifted: moving the
+       component up would mean routing four props and four events through
+       App.vue, which owns none of them and would have to learn about tools to
+       pass them along. The target is a slot App.vue keeps as the first column
+       of the workspace.
+
+       `defer` is not optional: the target is rendered by Vue in the same pass
+       as this chart, and a plain Teleport resolves its selector against the
+       document while that pass is still building the tree in memory — so it
+       would find nothing and warn. Deferred, the lookup happens after the
+       cycle, by which time the slot is in the document. -->
+  <Teleport defer to="#tool-rail">
     <DrawingToolbar
       :active-tool="draw.activeTool.value"
       :active-color="draw.activeColor.value"
       :has-selection="hasSelection"
       :count="draw.drawings.value.length"
+      :magnet="draw.magnet.value"
+      :stay-armed="draw.stayArmed.value"
+      :can-undo="draw.canUndo.value"
+      :can-redo="draw.canRedo.value"
+      :all-hidden="draw.allHidden.value"
+      :all-locked="allLocked"
       @select-tool="onToolbarTool"
       @select-color="onToolbarColor"
       @delete="onToolbarDelete"
       @clear="onToolbarClear"
+      @cycle-magnet="onToolbarMagnet"
+      @toggle-stay="onToolbarStay"
+      @undo="onUndo"
+      @redo="onRedo"
+      @toggle-all-hidden="onObjectsToggleAll"
+      @toggle-all-locked="onToolbarLockAll"
     />
+  </Teleport>
 
+  <!-- The object list belongs to the drawings, which live here, and belongs on
+       the screen in the instrument bar's tool cluster. Teleported for the same
+       reason and in the same way as the rail above. -->
+  <Teleport defer to="#chart-tools">
+    <ChartObjects
+      :drawings="draw.drawings.value"
+      :selected-id="draw.selectedId.value"
+      :all-hidden="draw.allHidden.value"
+      @toggle="onObjectToggle"
+      @lock="onObjectLock"
+      @edit="onTextEdit"
+      @remove="onObjectRemove"
+      @select="onObjectSelect"
+      @toggle-all="onObjectsToggleAll"
+      @clear="onToolbarClear"
+    />
+  </Teleport>
+
+  <div class="chart-area">
     <div
       class="chart-wrap"
       :class="{ 'is-trading': replay.active }"
       @contextmenu="onContextMenu"
     >
       <div ref="host" class="chart-host"></div>
+
+      <!-- Over the chart in the top left corner, where a terminal keeps it.
+           Takes no pointer events; see ChartLegend. -->
+      <ChartLegend
+        :symbol="props.symbol"
+        :timeframe="props.timeframe"
+        :bar="hoverBar"
+      />
 
       <!-- Transparent until the pointer is over something it can take hold of —
            a drawing, or one of a running replay's levels — or until a tool is
@@ -1629,7 +2009,21 @@ defineExpose({ reload: loadInitial });
         @pointermove="onOverlayMove"
         @pointerup="onOverlayUp"
         @pointercancel="onOverlayUp"
+        @dblclick="onOverlayDouble"
       ></div>
+
+      <!-- Over the anchor of the annotation being typed into. Inside the chart
+           wrapper, because the anchor was measured against it. -->
+      <TextEditBox
+        :target="draw.editing.value"
+        :value="editingDrawing?.text ?? ''"
+        :font-size="editingDrawing?.fontSize ?? 'md'"
+        :bold="editingDrawing?.bold ?? false"
+        :italic="editingDrawing?.italic ?? false"
+        :glyphs="editingDrawing ? specFor(editingDrawing.type)?.glyphs ?? [] : []"
+        @commit="onTextCommit"
+        @cancel="onTextCancel"
+      />
 
       <PositionStyleBar
         v-if="selectedPosition"
@@ -1645,6 +2039,17 @@ defineExpose({ reload: loadInitial });
         :width="selectedLine.width"
         :line-style="selectedLine.lineStyle"
         @update="onLineStyle"
+      />
+
+      <TextStyleBar
+        v-if="selectedText"
+        :color="selectedText.color"
+        :font-size="selectedText.fontSize"
+        :bold="selectedText.bold"
+        :italic="selectedText.italic"
+        :boxed="selectedText.boxed"
+        @update="onTextStyle"
+        @edit="onTextEdit(selectedText.id)"
       />
 
       <!-- Armed rather than selected: this one says what the next click picks
@@ -1668,7 +2073,7 @@ defineExpose({ reload: loadInitial });
         :message="pendingDelete === 'all'
           ? `All ${drawingCount} drawing${drawingCount === 1 ? '' : 's'} on `
             + `${session.symbol ?? 'this symbol'} will be removed. This cannot be undone.`
-          : 'The selected drawing will be removed. This cannot be undone.'"
+          : `${pendingName} will be removed. This cannot be undone.`"
         :confirm-label="pendingDelete === 'all' ? 'Remove all' : 'Delete'"
         @confirm="confirmDelete"
         @cancel="pendingDelete = null"
@@ -1690,9 +2095,13 @@ defineExpose({ reload: loadInitial });
 </template>
 
 <style scoped>
+/* Nothing here is inset from anything: the chart is the desk, and it runs to
+   the edges of the space it is given. The drawing rail used to be the first
+   column of this box; it is teleported to the left edge of the workspace now,
+   which is where the tools belong relative to everything, not only relative to
+   the chart. */
 .chart-area {
   display: flex;
-  gap: 8px;
   flex: 1;
   min-height: 0;
   min-width: 0;
@@ -1702,17 +2111,21 @@ defineExpose({ reload: loadInitial });
   flex: 1;
   min-height: 0;
   min-width: 0;
-  border: 1px solid var(--chart-brd);
-  border-radius: var(--radius-md);
   overflow: hidden;
   background: var(--chart-bg);
+
+  /* Where the floating bars start, under the legend in the same corner. One
+     variable because there are three of them and they must not overlap: the
+     legend is always up, the quick bar is up whenever a session runs, and one
+     style bar at a time sits under whichever of those is there. */
+  --overlay-top: 70px;
 }
 
-/* The quick bar takes the top left corner while a session runs, so the style
- * bars — which share that corner and would otherwise sit under it — step down
- * below it. They are shown one at a time and never together, so one rule moves
- * whichever is up. 8px + the bar's 40px + 8px. */
-.chart-wrap.is-trading :deep(.style-bar) { top: 56px; }
+.chart-wrap :deep(.quick-bar),
+.chart-wrap :deep(.style-bar) { top: var(--overlay-top); }
+/* The quick bar takes that slot while a session runs, so a style bar steps
+   down past it — 40px of bar plus the gap. */
+.chart-wrap.is-trading :deep(.style-bar) { top: calc(var(--overlay-top) + 46px); }
 
 .chart-host {
   position: absolute;
@@ -1730,6 +2143,6 @@ defineExpose({ reload: loadInitial });
   align-items: center;
   justify-content: center;
   pointer-events: none;
-  color: var(--sec);
+  color: var(--faint);
 }
 </style>

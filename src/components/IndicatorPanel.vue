@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue';
 import ConfirmModal from './ConfirmModal.vue';
-import { INDICATORS, indicatorCatalog } from '../../shared/indicators/index.js';
+import { INDICATORS } from '../../shared/indicators/index.js';
 import { VOLUME_PROFILE_PARAMS } from '../../shared/indicators/volumeProfile.js';
 // Zone colours live with the fair-value-gap schema, which defined them first;
 // a session is another zone and uses the same eight.
@@ -14,8 +14,6 @@ import {
   updateIndicatorParam,
 } from '../stores/session.js';
 
-const catalog = indicatorCatalog();
-const picking = ref(false);
 
 /* What is waiting on a confirmation: an indicator, a custom session row, or
  * nothing. One slot rather than one per kind — only one prompt can be open. */
@@ -39,11 +37,6 @@ function swatchFor(ind) {
   if (!['zones', 'hunts', 'setups'].includes(spec.kind)) return `var(--ind-${ind.colorIndex})`;
   return 'linear-gradient(135deg, '
     + `var(--${ind.params.bullColor}) 0 50%, var(--${ind.params.bearColor}) 50%)`;
-}
-
-function add(spec) {
-  addIndicator(spec);
-  picking.value = false;
 }
 
 function askRemoveIndicator(ind) {
@@ -139,7 +132,7 @@ function fmtCount(n) {
 </script>
 
 <template>
-  <aside class="k-panel side-panel">
+  <aside class="side-panel">
     <!-- ─── Volume profile ─────────────────────────────────────────────── -->
     <div class="section-head">
       <div class="k-eyebrow">Volume profile</div>
@@ -273,25 +266,14 @@ function fmtCount(n) {
     <!-- ─── Indicators ─────────────────────────────────────────────────── -->
     <div class="section-head">
       <div class="k-eyebrow">Indicators</div>
-      <button class="btn btn--sm btn--default" @click="picking = !picking">
-        {{ picking ? 'Close' : 'Add' }}
-      </button>
     </div>
 
-    <ul v-if="picking" class="catalog">
-      <li v-for="spec in catalog" :key="spec.id">
-        <button
-          v-hint="{ label: spec.name, text: spec.description }"
-          class="catalog-item"
-          @click="add(spec)"
-        >
-          <span class="catalog-name">{{ spec.name }}</span>
-          <span class="k-prose">{{ spec.description }}</span>
-        </button>
-      </li>
-    </ul>
-
-    <p v-if="!session.indicators.length" class="k-prose">No indicators on the chart.</p>
+    <!-- The catalogue moved to the Indicators button in the bar above, where it
+         is a list of names with the explanations on hover. This panel is what
+         is already on the chart: its settings, its colour, and taking it off. -->
+    <p v-if="!session.indicators.length" class="k-prose">
+      Nothing on the chart. <b>Indicators</b> in the bar above adds one.
+    </p>
 
     <div v-for="ind in session.indicators" :key="ind.uid" class="indicator">
       <div class="indicator-head">
@@ -444,14 +426,16 @@ function fmtCount(n) {
 </template>
 
 <style scoped>
+/* The right column of the workspace — see DataManager for why it is flush. */
 .side-panel {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 18px;
-  width: 280px;
+  padding: 14px;
+  width: 282px;
   flex-shrink: 0;
   overflow-y: auto;
+  background: var(--bg);
 }
 
 .section-head {
@@ -515,33 +499,17 @@ function fmtCount(n) {
   flex-direction: column;
   gap: 3px;
   padding: 9px 10px;
-  border: 1px solid var(--accent-brd);
+  border: 1px solid var(--brd);
   border-radius: var(--radius-sm);
-  background: var(--accent-bg);
+  background: var(--glass);
 }
 .readout-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .readout-row .poc { color: var(--accent); font-weight: 600; }
 .readout-row .pos { color: var(--pos); }
 .readout-row .neg { color: var(--neg); }
-.readout-sep { height: 1px; background: var(--accent-brd); margin: 3px 0; }
+.readout-sep { height: 1px; background: var(--line); margin: 3px 0; }
 
 .k-divider-h { height: 1px; background: var(--line); margin: 2px 0; }
-
-.catalog { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
-.catalog-item {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 7px 9px;
-  border: 1px solid var(--brd);
-  border-radius: var(--radius-sm);
-  background: var(--glass);
-  text-align: left;
-  cursor: pointer;
-}
-.catalog-item:hover { border-color: var(--accent-brd); background: var(--accent-bg); }
-.catalog-name { font-weight: 600; font-size: 12px; }
 
 .indicator {
   display: flex;
@@ -589,8 +557,8 @@ function fmtCount(n) {
 }
 .toggle:hover { background: var(--glass-strong); color: var(--txt); }
 .toggle.is-active {
-  border-color: var(--accent-brd);
-  background: var(--accent-bg);
+  border-color: var(--line-strong);
+  background: var(--sel-bg);
   color: var(--txt);
 }
 

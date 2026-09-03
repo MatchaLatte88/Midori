@@ -83,7 +83,7 @@ function pick(item) {
 </script>
 
 <template>
-  <div v-if="open" ref="el" class="menu k-panel" :style="style" role="menu">
+  <div v-if="open" ref="el" class="menu k-pop" :style="style" role="menu">
     <span v-if="title" class="menu-title k-mono-label">{{ title }}</span>
     <button
       v-for="item in items"
@@ -103,38 +103,38 @@ function pick(item) {
 .menu {
   position: fixed;
   z-index: 30;
-  min-width: 208px;
+  min-width: 216px;
   max-width: 320px;
-  padding: 5px;
+  padding: 6px;
   display: flex;
   flex-direction: column;
   gap: 1px;
 }
+/* The section name of a terminal menu: mono capitals, one step down, no rule
+   under it — the gap is the separation. */
 .menu-title {
-  padding: 3px 7px 5px;
+  padding: 5px 8px 7px;
   color: var(--faint);
-  border-bottom: 1px solid var(--line);
-  margin-bottom: 3px;
 }
 
 .row {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  padding: 5px 7px;
+  padding: 6px 8px;
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   background: none;
   text-align: left;
   cursor: pointer;
 }
-.row:hover:not(.is-disabled) { background: var(--glass); }
+.row:hover:not(.is-disabled) { background: var(--hover); }
 .row.is-disabled { cursor: default; }
 
 .label {
-  font-family: var(--font-num);
-  font-weight: 600;
-  font-size: 12px;
+  font-family: var(--font-ui);
+  font-weight: 500;
+  font-size: 12.5px;
   color: var(--txt);
 }
 .is-disabled .label { color: var(--faint); }

@@ -9,8 +9,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { profileWindow, windowKey } from '../src/components/chart/rangeProfilePrimitive.js';
-import { createDrawing, parseDrawing } from '../src/components/chart/drawings/model.js';
-import { pointsRequired } from '../src/components/chart/drawings/geometry.js';
+import { createDrawing, parseDrawing } from '../src/components/chart/drawings/factory.js';
+import { pointsRequired } from '../src/components/chart/drawings/registry.js';
 import { computeVolumeProfile } from '../shared/indicators/volumeProfile.js';
 
 const span = (t1, t2) => ({ id: 'd1', points: [{ time: t1, price: 10 }, { time: t2, price: 20 }] });

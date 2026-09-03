@@ -1,6 +1,6 @@
 {
   "name": "project-midori",
-  "version": "0.1.12-dev",
+  "version": "0.1.13-dev",
   "description": "Midorii — local backtesting and trading-bot workbench",
   "private": true,
   "type": "module",

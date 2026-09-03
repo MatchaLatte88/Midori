@@ -2,16 +2,25 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  FIB_LEVELS, HIT_TOLERANCE, buildFromGesture, distanceToRay, distanceToRectEdge,
-  distanceToSegment, fibPrices, gesturePoints, handleAt, hitTest, isInsideRect,
-  measureStats, pointsRequired, positionDirection, positionStats, snapAxis, snapToAxis,
+  FIB_LEVELS, HIT_TOLERANCE, distanceToRay, distanceToRectEdge,
+  distanceToSegment, fibPrices, handleAt, isInsideRect,
+  measureStats, positionDirection, positionStats, snapAxis, snapToAxis,
 } from '../src/components/chart/drawings/geometry.js';
 import {
-  DEFAULT_LINE_STYLE, DEFAULT_POSITION_STYLE, DRAWING_TYPES, ENTRY, FVG_COLORS,
-  LEGACY_POSITION_TYPES, LINE_STYLES, LINE_WIDTHS, MAX_FILL_OPACITY, STOP, TARGET,
-  ZONE_COLORS, createDrawing, dashPattern, moveAnchor, normalizeOpacity, normalizeWidth,
-  parseDrawing, translateDrawing,
+  DEFAULT_LINE_STYLE, DEFAULT_POSITION_STYLE, DEFAULT_TEXT_STYLE, ENTRY, FVG_COLORS,
+  LEGACY_POSITION_TYPES, LINE_STYLES, LINE_WIDTHS, MAX_FILL_OPACITY, MAX_TEXT_LENGTH,
+  STOP, TARGET, ZONE_COLORS, dashPattern, normalizeOpacity, normalizeWidth,
 } from '../src/components/chart/drawings/model.js';
+/* The four dispatchers moved out of geometry.js when the tool set outgrew a
+ * switch statement: which shape needs how many anchors is per tool, and there
+ * are eighty-six of them. geometry.js is the maths they are built out of. */
+import {
+  DRAWING_TYPES, buildFromGesture, gesturePoints, hitTest, isScreenSpace, isVariable,
+  pointsRequired, specFor,
+} from '../src/components/chart/drawings/registry.js';
+import {
+  createDrawing, moveAnchor, parseDrawing, translateDrawing,
+} from '../src/components/chart/drawings/factory.js';
 
 const SIZE = { width: 800, height: 400 };
 
@@ -424,17 +433,96 @@ test('every offered zone colour is a token name, not a raw colour', () => {
 test('every drawing type declares how many points it needs', () => {
   for (const type of DRAWING_TYPES) {
     const stored = pointsRequired(type);
-    const dragged = gesturePoints(type);
-    assert.ok(stored >= 1 && stored <= 3, `${type} stores ${stored} points`);
-    assert.ok(dragged === 1 || dragged === 2, `${type} is dragged with ${dragged} points`);
-    // A drag must produce exactly what the type stores, or nothing can be built.
-    assert.equal(
-      buildFromGesture(type, { time: 0, price: 10 }, { time: 1, price: 5 }).length,
-      stored,
-      `${type}: the drag must yield ${stored} anchors`,
-    );
+    const collected = gesturePoints(type);
+    assert.ok(Number.isInteger(stored) && stored >= 0, `${type} stores ${stored} points`);
+    assert.ok(Number.isInteger(collected) && collected >= 1,
+      `${type} is placed with ${collected} points`);
+
+    /* A gesture that collects one or two points has to hand build() exactly
+     * what the type stores, or nothing can be made from it. The multi-click and
+     * open-ended tools collect their anchors one at a time and never go through
+     * build(), so there is nothing to check there. */
+    const spec = specFor(type);
+    if (spec.gesture === 'click' || spec.gesture === 'drag') {
+      assert.equal(
+        buildFromGesture(type, { time: 0, price: 10 }, { time: 1, price: 5 }).length,
+        stored,
+        `${type}: the gesture must yield ${stored} anchors`,
+      );
+    }
   }
-  assert.throws(() => pointsRequired('spiral'), /unknown drawing type/);
+  assert.throws(() => pointsRequired('unicorn'), /unknown drawing type/);
+});
+
+test('a pane-anchored tool stores no market coordinates at all', () => {
+  // An anchored note is a caption on the chart, not on a bar: its anchor is a
+  // fraction of the pane, so it has no time and no price to store.
+  assert.equal(pointsRequired('anchoredtext'), 0);
+  assert.equal(isScreenSpace('anchoredtext'), true);
+  assert.equal(isScreenSpace('text'), false, 'plain text is pinned to a bar');
+
+  const note = createDrawing('anchoredtext', [], { screen: { x: 0.25, y: 0.5 }, text: 'hi' });
+  assert.deepEqual(note.screen, { x: 0.25, y: 0.5 });
+  assert.deepEqual(note.points, []);
+  assert.throws(() => createDrawing('anchoredtext', [], {}), /screen anchor/);
+  assert.throws(
+    () => createDrawing('anchoredtext', [{ time: 1, price: 1 }], { screen: { x: 0, y: 0 } }),
+    /takes no points/,
+  );
+});
+
+test('a variable-length tool accepts any count at or above its minimum', () => {
+  assert.equal(isVariable('polyline'), true);
+  assert.equal(isVariable('trendline'), false);
+
+  const at = (n) => ({ time: n, price: n });
+  const three = createDrawing('polyline', [at(1), at(2), at(3)]);
+  assert.equal(three.points.length, 3);
+  const many = createDrawing('brush', [at(1), at(2), at(3), at(4), at(5)]);
+  assert.equal(many.points.length, 5);
+
+  assert.throws(() => createDrawing('polyline', [at(1)]), /at least 2/);
+  // And the same rule on the way back in, so a truncated file loses the one
+  // drawing rather than drawing a line to nowhere.
+  assert.equal(parseDrawing({ type: 'polyline', points: [{ time: 1, price: 1 }] }), null);
+  assert.equal(parseDrawing({ ...three, id: 'x' })?.points.length, 3);
+});
+
+test('locked is stored, and defaults to unlocked on a file that never had it', () => {
+  const level = createDrawing('horizontal', [{ time: 1, price: 10 }]);
+  assert.equal(level.locked, false, 'nothing is born locked');
+
+  const locked = parseDrawing({ ...level, locked: true });
+  assert.equal(locked.locked, true);
+  // Anything but an explicit true is unlocked: a drawing nobody locked must
+  // never come back stuck.
+  assert.equal(parseDrawing({ ...level, locked: 'yes' }).locked, false);
+  const { locked: _absent, ...withoutField } = level;
+  assert.equal(parseDrawing(withoutField).locked, false);
+});
+
+test('an annotation carries its words and its setting, and nothing else does', () => {
+  const note = createDrawing('text', [{ time: 1, price: 10 }],
+    { text: 'support here', fontSize: 'lg', bold: true });
+  assert.equal(note.text, 'support here');
+  assert.equal(note.fontSize, 'lg');
+  assert.equal(note.bold, true);
+  assert.equal(note.italic, false);
+
+  const line = createDrawing('trendline', [{ time: 1, price: 1 }, { time: 2, price: 2 }]);
+  assert.equal('text' in line, false, 'a trend line has nothing to say');
+  assert.equal('fontSize' in line, false);
+
+  // An unknown size falls back rather than costing the annotation.
+  assert.equal(createDrawing('text', [{ time: 1, price: 1 }], { fontSize: 'huge' }).fontSize,
+    DEFAULT_TEXT_STYLE.fontSize);
+
+  const loaded = parseDrawing({ ...note, text: 'a\r\nb' });
+  assert.equal(loaded.text, 'a\nb', 'carriage returns are dropped');
+  assert.equal(parseDrawing({ ...note, text: 'x'.repeat(MAX_TEXT_LENGTH + 50) }).text.length,
+    MAX_TEXT_LENGTH);
+  // An empty annotation is not corrupt — it is one whose editor was dismissed.
+  assert.equal(parseDrawing({ ...note, text: undefined })?.text, '');
 });
 
 test('createDrawing validates its type and its points', () => {

@@ -85,7 +85,7 @@ function orderPrice(order) {
 </script>
 
 <template>
-  <section class="dock k-panel" :class="{ 'is-closed': !open }">
+  <section class="dock" :class="{ 'is-closed': !open }">
     <div class="tabs">
       <button
         v-for="t in TABS"
@@ -304,10 +304,14 @@ function orderPrice(order) {
 </template>
 
 <style scoped>
+/* Flush under the chart, separated by one line. A card here would have put a
+   gutter between a position and the candles it is being judged against. */
 .dock {
   display: flex;
   flex-direction: column;
   flex: none;
+  background: var(--surface-1);
+  border-top: 1px solid var(--line);
   /* Tall enough for five or six rows and their heading, which is what an
      afternoon usually has open at once. Beyond that it scrolls rather than
      taking the chart's room — the chart is the thing being read. */
@@ -344,7 +348,7 @@ function orderPrice(order) {
   transition: color 0.15s, border-color 0.15s, background 0.15s;
 }
 .tab:hover { color: var(--txt); background: var(--glass); }
-.tab.is-active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab.is-active { color: var(--txt); border-bottom-color: var(--accent); }
 .count {
   min-width: 15px;
   padding: 0 4px;
@@ -410,7 +414,7 @@ function orderPrice(order) {
 .grid td.mono { font-family: var(--font-mono); }
 .grid tbody tr { border-top: 1px solid var(--line-soft); }
 .grid tbody tr:hover { background: var(--glass); }
-.grid tbody tr.is-active { background: var(--accent-bg); }
+.grid tbody tr.is-active { background: var(--sel-bg); }
 .grid tbody tr.is-clickable { cursor: pointer; }
 .grid tbody tr.is-focused { background: var(--accent-bg); }
 .grid td:last-child { width: 1%; padding-right: 0; }

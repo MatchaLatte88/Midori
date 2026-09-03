@@ -19,7 +19,7 @@ const percent = (v) => Math.round(v * 100);
 </script>
 
 <template>
-  <div class="style-bar k-panel">
+  <div class="style-bar k-pop">
     <span class="k-eyebrow">Position</span>
 
     <div class="group">

@@ -1,29 +1,34 @@
 /* ─── Midorii design tokens ───────────────────────────────────────────────
-   Design language: "Stille Karten" — the quiet-surface descendant of the
-   Katsumii "Living Data" language. What changed, and why:
+   Design language: "Terminal" — the flat, near-black desk a trading terminal
+   is. It replaces "Stille Karten", and the three things it changes are the
+   three things that made the app read as a document rather than an instrument:
 
-   Fills, not edges. A border draws a line the eye has to read before it can
-   read the content. A surface a few percent off the ground separates just as
-   clearly and says nothing. So --brd is transparent and --glass carries the
-   separation; because the fill is semi transparent it stacks, and an input on
-   a card still reads against the card it sits on.
+   The ground is one colour, and the app is drawn on it. No cards floating on a
+   tinted backdrop, no ambient glow, no gradient panels. Chrome, panels and the
+   chart share the same near-black ground and are separated by a hairline. A
+   surface that is lifted is lifted because it is *temporarily over* something —
+   a menu, a popover — and that is the only thing a shadow is allowed to mean.
 
-   Wide radii and one deep shadow. 22 for panels, 16 for cards, 11 for
-   controls. The shadow is the only thing lifting a panel off the ground,
-   so it is soft and far rather than tight and dark.
+   Edges, not fills. The previous language removed every border on the argument
+   that a fill separates just as well. It does, and it also makes every control
+   look like a soft button. A terminal is read by scanning columns, and a
+   hairline is what makes a column a column. So --brd is a real line again, and
+   --hover carries the pointer instead.
 
-   Section names are set in the wordmark's own face at reading size in mixed
-   case, not in mono capitals — a title, not a machine label. Mono stays where
-   it belongs: on data and on the small print beside it.
+   Tight radii and small type. 12 for panels and menus, 8 for cards and
+   controls, 6 for the small ones. Labels are 9–10px mono capitals with wide
+   tracking, values 12–13px, and the one big number on the screen is the price.
 
    Type is four tokens (--font-ui / --font-title / --font-num / --font-mono).
    Nothing outside this file names a typeface, so changing one is one line.
 
-   Two deliberate departures from the Acrobar/Katsumii palette:
+   Two deliberate departures from a stock terminal palette:
 
-   1. The accent is Midorii green. Because the accent is green, profit does
-      NOT get a second green — `--pos` IS the accent. Loss keeps the single
-      red alarm tone. Two greens side by side would read as noise.
+   1. The accent is Midorii green, and it is rationed. It marks the brand, the
+      live price, and the one control that is currently doing something. It is
+      NOT the colour of every active state — a filled grey does that job, and
+      an accent that is everywhere marks nothing. Because the accent is green,
+      profit does not get a second green: `--pos` IS the accent.
 
    2. Candles are blue/white, never green/red. That frees green entirely for
       interaction and branding, and it keeps the chart readable for the ~8%
@@ -31,8 +36,7 @@
       mode "light" becomes a hollow candle with an ink outline, because white
       on a white chart is invisible.
 
-   Accent is a single pair of tokens (--accent / --accent-*). Swapping the
-   product accent means editing those lines only. */
+   Swapping the product accent means editing the --accent lines only. */
 
 /* ─── Type roles ─────────────────────────────────────────────────────────── */
 :root {
@@ -42,68 +46,179 @@
   --font-mono:  'DM Mono', ui-monospace, SFMono-Regular, monospace;
 }
 
-/* ─── Light mode (default) ───────────────────────────────────────────────── */
+/* ─── Chrome geometry ─────────────────────────────────────────────────────
+   The two bars across the top and the strip along the bottom are fixed
+   heights that several components have to agree on — the workspace subtracts
+   them, the chart overlays clear them. One place to change them. */
 :root {
-  --bg:             #f8fafc;
-  --txt:            #0f172a;
-  --sec:            #64748b;
-  --faint:          #94a3b8;
-  /* No control keeps an edge — --glass separates instead. --line survives for
-     the few places that genuinely are a line: dividers and table rules. */
-  --brd:            transparent;
+  --titlebar-height: 40px;   /* the nav row; the OS overlay sits in it */
+  --toolbar-height:  54px;   /* the instrument row under it */
+  --statusbar-height: 26px;
+  --rail-width:      50px;   /* the drawing tools down the left */
+}
+
+/* ─── Dark mode — the room the app was designed in ───────────────────────── */
+html.dark {
+  /* Four surfaces and nothing in between: the ground, the chrome sitting on
+     it, a panel, and whatever the pointer is currently over. */
+  --bg:             #0a0a0b;
+  --surface-1:      #0e0e11;
+  --surface-2:      #141417;
+  --surface-3:      #1b1b1f;
+
+  --txt:            #e8e8ea;
+  --sec:            #8b8b93;
+  --faint:          #5a5a63;
+
+  /* The hairline is the workhorse: it separates the columns a terminal is
+     read in. --line-strong is for a border that has to be found rather than
+     merely obeyed. */
+  --brd:            rgba(255, 255, 255, 0.07);
+  --line:           rgba(255, 255, 255, 0.07);
+  --line-strong:    rgba(255, 255, 255, 0.13);
+  --line-soft:      rgba(255, 255, 255, 0.04);
+  --scroll-thumb:   rgba(255, 255, 255, 0.16);
+
+  /* Panels are flat and grounded. Only something temporarily on top of the
+     app — a menu, a modal, a tooltip — casts a shadow. */
+  --pop-shadow:     0 24px 60px -18px rgba(0, 0, 0, 0.85), 0 2px 10px rgba(0, 0, 0, 0.45);
+
+  --hover:          rgba(255, 255, 255, 0.055);
+  --glass:          rgba(255, 255, 255, 0.045);
+  --glass-strong:   rgba(255, 255, 255, 0.10);
+  /* The filled state of a segmented control. Grey, not accent: this marks
+     "the one that is on", which is a different statement from "look here". */
+  --sel-bg:         rgba(255, 255, 255, 0.11);
+
+  --rail-bg:        var(--bg);
+
+  --pos:            #34d399;
+  --neg:            #f87171;
+  --ember:          #ff7847;
+
+  /* Accent — Midorii green, dark mode */
+  --accent:         #34d399;
+  --accent-bg:      rgba(52, 211, 153, 0.10);
+  --accent-brd:     rgba(52, 211, 153, 0.28);
+  --btn-primary-fg: #04231a;
+
+  --radius:         12px;
+  --radius-md:      8px;
+  --radius-sm:      6px;
+  --radius-pill:    999px;
+
+  color-scheme: dark;
+}
+
+/* ─── Chart surface, dark ────────────────────────────────────────────────────
+   The chart is on the same ground as everything else — in a terminal the
+   chart IS the desk, and a panel around it would be a picture frame. */
+html.dark {
+  --chart-bg:       #0a0a0b;
+  --chart-grid:     rgba(255, 255, 255, 0.035);
+  --chart-text:     #6f6f79;
+  --chart-brd:      rgba(255, 255, 255, 0.07);
+  --chart-cross:    rgba(255, 255, 255, 0.30);
+  /* The last traded price, on the axis and as a dashed line across the chart.
+     One of the three places the accent is spent: it is the number every other
+     number on the screen is read against. */
+  --chart-price-line: #34d399;
+  /* The crosshair's own labels are furniture, so they are grey — an accent
+     that followed the pointer would compete with the price it is measuring. */
+  --chart-label-bg: #2a2a30;
+
+  /* Up: solid near-white — on black it needs no outline to read */
+  --candle-up-body:   #e6e6e8;
+  --candle-up-brd:    #e6e6e8;
+  --candle-up-wick:   #c9c9cf;
+  /* Down: solid blue */
+  --candle-down-body: #3b82f6;
+  --candle-down-brd:  #3b82f6;
+  --candle-down-wick: #3b82f6;
+
+  --vol-up:         rgba(230, 230, 232, 0.26);
+  --vol-down:       rgba(59, 130, 246, 0.38);
+
+  /* Gradient stops for the line-and-area chart styles. Same two hues as the
+     candles, so switching how price is drawn never changes what up and down
+     look like. */
+  --chart-area-top:    rgba(230, 230, 232, 0.24);
+  --chart-area-bottom: rgba(230, 230, 232, 0.00);
+  --chart-down-soft:   rgba(59, 130, 246, 0.00);
+  --chart-down-strong: rgba(59, 130, 246, 0.26);
+
+  --vp-bar:         rgba(160, 160, 172, 0.18);
+  --vp-bar-va:      rgba(59, 130, 246, 0.34);
+  --vp-poc:         #34d399;
+  --vp-va-edge:     rgba(59, 130, 246, 0.55);
+
+  --vp-buy:         rgba(230, 230, 232, 0.52);
+  --vp-sell:        rgba(59, 130, 246, 0.60);
+
+  /* Indicator lines — deliberately none of them blue (candles) or green
+     (accent), so an overlay is never mistaken for price or for a control. */
+  --ind-1:          #fbbf24;
+  --ind-2:          #a78bfa;
+  --ind-3:          #f472b6;
+  --ind-4:          #fb923c;
+  --ind-5:          #9ca3af;
+}
+
+/* ─── Light mode ─────────────────────────────────────────────────────────────
+   The same instrument in a lit room: one flat ground, the same hairlines, the
+   same geometry. Not a second design — a second set of values. */
+:root {
+  --bg:             #ffffff;
+  --surface-1:      #fbfbfc;
+  --surface-2:      #ffffff;
+  --surface-3:      #f2f3f5;
+
+  --txt:            #16161a;
+  --sec:            #6b7280;
+  --faint:          #9ca3af;
+
+  --brd:            rgba(15, 23, 42, 0.10);
   --line:           rgba(15, 23, 42, 0.10);
+  --line-strong:    rgba(15, 23, 42, 0.18);
   --line-soft:      rgba(15, 23, 42, 0.055);
   --scroll-thumb:   rgba(15, 23, 42, 0.22);
 
-  /* Panels — one flat surface, lifted by a single soft shadow */
-  --panel-bg:       rgba(255, 255, 255, 0.92);
-  --panel-shadow:   0 18px 44px -12px rgba(15, 23, 42, 0.16);
-  --glass:          color-mix(in srgb, var(--sec) 9%, transparent);
-  --glass-brd:      transparent;
-  --glass-strong:   color-mix(in srgb, var(--sec) 18%, transparent);
+  --pop-shadow:     0 20px 48px -16px rgba(15, 23, 42, 0.22), 0 2px 8px rgba(15, 23, 42, 0.08);
 
-  /* Chrome surfaces */
-  --topbar-bg:      rgba(255, 255, 255, 0.72);
-  --topbar-shadow:  0 10px 30px -14px rgba(15, 23, 42, 0.22);
-  --rail-bg:        #f3f5fa;
-  --tile-bg:        #ffffff;
+  --hover:          rgba(15, 23, 42, 0.045);
+  --glass:          rgba(15, 23, 42, 0.04);
+  --glass-strong:   rgba(15, 23, 42, 0.08);
+  --sel-bg:         rgba(15, 23, 42, 0.10);
 
-  /* Semantics — profit is the accent itself, loss is the only alarm tone */
+  --rail-bg:        var(--bg);
+
   --pos:            #059669;
   --neg:            #dc2626;
   --ember:          #d4531d;
 
   /* Accent — Midorii green, light mode */
   --accent:         #059669;
-  --accent-bg:      rgba(5, 150, 105, 0.08);
-  --accent-brd:     rgba(5, 150, 105, 0.22);
-  --accent-glow:    rgba(5, 150, 105, 0.14);
+  --accent-bg:      rgba(5, 150, 105, 0.09);
+  --accent-brd:     rgba(5, 150, 105, 0.24);
   --btn-primary-fg: #ffffff;
 
-  /* Ambient accent blobs behind the app chrome */
-  --blob1-clr:      color-mix(in srgb, var(--accent) 11%, transparent);
-  --blob2-clr:      color-mix(in srgb, var(--accent)  9%, transparent);
-
-  --radius:         22px;
-  --radius-md:      16px;
-  --radius-sm:      11px;
+  --radius:         12px;
+  --radius-md:      8px;
+  --radius-sm:      6px;
   --radius-pill:    999px;
 
-  /* Native window controls (Electron titleBarOverlay mirrors these) */
-  --titlebar-height: 40px;
   color-scheme: light;
 }
 
-/* ─── Chart surface, light ───────────────────────────────────────────────────
-   The chart is the one place the panel language does NOT apply. Price
-   action is the figure; the surface behind it stays flat and quiet so it
-   never competes. */
+/* ─── Chart surface, light ───────────────────────────────────────────────── */
 :root {
   --chart-bg:       #ffffff;
-  --chart-grid:     rgba(15, 23, 42, 0.055);
-  --chart-text:     #64748b;
+  --chart-grid:     rgba(15, 23, 42, 0.05);
+  --chart-text:     #6b7280;
   --chart-brd:      rgba(15, 23, 42, 0.10);
   --chart-cross:    rgba(15, 23, 42, 0.35);
+  --chart-price-line: #059669;
+  --chart-label-bg: #334155;
 
   /* Up: hollow — white body, ink outline (white-on-white would vanish) */
   --candle-up-body:   #ffffff;
@@ -114,100 +229,25 @@
   --candle-down-brd:  #2563eb;
   --candle-down-wick: #2563eb;
 
-  --vol-up:         rgba(51, 65, 85, 0.28);
-  --vol-down:       rgba(37, 99, 235, 0.28);
+  --vol-up:         rgba(51, 65, 85, 0.30);
+  --vol-down:       rgba(37, 99, 235, 0.30);
 
-  /* Volume profile — the accent marks the point of control, because that is
-     the one level the eye should find first. */
-  --vp-bar:         rgba(71, 85, 105, 0.22);
-  --vp-bar-va:      rgba(37, 99, 235, 0.34);
+  --chart-area-top:    rgba(51, 65, 85, 0.22);
+  --chart-area-bottom: rgba(51, 65, 85, 0.00);
+  --chart-down-soft:   rgba(37, 99, 235, 0.00);
+  --chart-down-strong: rgba(37, 99, 235, 0.24);
+
+  --vp-bar:         rgba(71, 85, 105, 0.20);
+  --vp-bar-va:      rgba(37, 99, 235, 0.32);
   --vp-poc:         #059669;
   --vp-va-edge:     rgba(37, 99, 235, 0.45);
 
-  /* Buy/sell split — same logic as the candles: light is the buyer, blue the
-     seller. One vocabulary for direction across the whole chart. */
   --vp-buy:         rgba(51, 65, 85, 0.55);
   --vp-sell:        rgba(37, 99, 235, 0.55);
 
-  /* Indicator lines — deliberately none of them blue (candles) or green
-     (accent), so an overlay is never mistaken for price or for a control. */
   --ind-1:          #d97706;
   --ind-2:          #7c3aed;
   --ind-3:          #db2777;
   --ind-4:          #ea580c;
   --ind-5:          #475569;
-}
-
-/* ─── Dark mode — base tone "Ink" ────────────────────────────────────────── */
-html.dark {
-  --bg:             #070d16;
-  --txt:            #eef2f7;
-  --sec:            #94a3b8;
-  --faint:          #64748b;
-  --brd:            transparent;
-  --line:           rgba(226, 232, 240, 0.08);
-  --line-soft:      rgba(226, 232, 240, 0.05);
-  --scroll-thumb:   rgba(226, 232, 240, 0.18);
-
-  --panel-bg:       rgba(30, 41, 59, 0.62);
-  --panel-shadow:   0 18px 44px -10px rgba(0, 0, 0, 0.55);
-  --glass:          color-mix(in srgb, var(--sec) 12%, transparent);
-  --glass-brd:      transparent;
-  --glass-strong:   color-mix(in srgb, var(--sec) 18%, transparent);
-
-  --topbar-bg:      rgba(12, 20, 34, 0.72);
-  --topbar-shadow:  0 12px 34px -16px rgba(0, 0, 0, 0.75);
-  --rail-bg:        #0c1422;
-  --tile-bg:        #121c2e;
-
-  --pos:            #34d399;
-  --neg:            #f87171;
-  --ember:          #ff7847;
-
-  /* Accent — Midorii green, dark mode */
-  --accent:         #34d399;
-  --accent-bg:      rgba(52, 211, 153, 0.09);
-  --accent-brd:     rgba(52, 211, 153, 0.25);
-  --accent-glow:    rgba(52, 211, 153, 0.16);
-  --btn-primary-fg: #04231a;
-
-  --blob1-clr:      color-mix(in srgb, var(--accent) 14%, transparent);
-  --blob2-clr:      color-mix(in srgb, var(--accent) 11%, transparent);
-
-  color-scheme: dark;
-}
-
-/* ─── Chart surface, dark ────────────────────────────────────────────────── */
-html.dark {
-  --chart-bg:       #080f1a;
-  --chart-grid:     rgba(226, 232, 240, 0.055);
-  --chart-text:     #94a3b8;
-  --chart-brd:      rgba(226, 232, 240, 0.08);
-  --chart-cross:    rgba(226, 232, 240, 0.40);
-
-  /* Up: solid near-white — on ink it needs no outline to read */
-  --candle-up-body:   #e2e8f0;
-  --candle-up-brd:    #e2e8f0;
-  --candle-up-wick:   #cbd5e1;
-  /* Down: solid blue */
-  --candle-down-body: #3b82f6;
-  --candle-down-brd:  #3b82f6;
-  --candle-down-wick: #3b82f6;
-
-  --vol-up:         rgba(226, 232, 240, 0.22);
-  --vol-down:       rgba(59, 130, 246, 0.28);
-
-  --vp-bar:         rgba(148, 163, 184, 0.20);
-  --vp-bar-va:      rgba(59, 130, 246, 0.38);
-  --vp-poc:         #34d399;
-  --vp-va-edge:     rgba(59, 130, 246, 0.55);
-
-  --vp-buy:         rgba(226, 232, 240, 0.55);
-  --vp-sell:        rgba(59, 130, 246, 0.60);
-
-  --ind-1:          #fbbf24;
-  --ind-2:          #a78bfa;
-  --ind-3:          #f472b6;
-  --ind-4:          #fb923c;
-  --ind-5:          #94a3b8;
 }

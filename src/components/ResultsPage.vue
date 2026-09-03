@@ -280,7 +280,7 @@ const axisLabel = (x) => (axisMode.value === 'aligned'
 
 <template>
   <div class="results">
-    <aside class="k-panel library">
+    <aside class="library">
       <header class="head">
         <span class="k-eyebrow">Runs</span>
         <span class="k-mono-label faint">{{ runs.length }}</span>
@@ -313,7 +313,7 @@ const axisLabel = (x) => (axisMode.value === 'aligned'
       </button>
     </aside>
 
-    <section class="k-panel detail">
+    <section class="detail">
       <div v-if="loading" class="placeholder k-prose">Loading…</div>
 
       <div v-else-if="selected.length === 0" class="placeholder k-prose">
@@ -589,7 +589,9 @@ const axisLabel = (x) => (axisMode.value === 'aligned'
 </template>
 
 <style scoped>
-.results { display: flex; gap: 12px; width: 100%; height: 100%; overflow: hidden; }
+/* Two flush columns with a line between them — the same layout rule the chart
+   views follow. See App.vue. */
+.results { display: flex; width: 100%; height: 100%; overflow: hidden; }
 
 .library {
   display: flex;
@@ -597,8 +599,9 @@ const axisLabel = (x) => (axisMode.value === 'aligned'
   gap: 8px;
   width: 302px;
   flex: none;
-  padding: 18px;
+  padding: 16px;
   overflow-y: auto;
+  border-right: 1px solid var(--line);
 }
 .head { display: flex; align-items: baseline; justify-content: space-between; }
 .hint { margin: 0 0 2px; }
@@ -617,7 +620,7 @@ const axisLabel = (x) => (axisMode.value === 'aligned'
   cursor: pointer;
 }
 .run-row:hover { background: var(--glass-strong); }
-.run-row.is-active { border-color: var(--accent-brd); background: var(--accent-bg); }
+.run-row.is-active { border-color: var(--line-strong); background: var(--sel-bg); }
 .run-top { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
 .run-name {
   font-family: var(--font-num);
@@ -670,7 +673,7 @@ const axisLabel = (x) => (axisMode.value === 'aligned'
   transition: color 0.15s, background 0.15s;
 }
 .mode-btn:hover { color: var(--txt); }
-.mode-btn.is-active { color: var(--accent); background: var(--accent-bg); }
+.mode-btn.is-active { color: var(--txt); background: var(--sel-bg); }
 .title {
   margin: 0;
   font-family: var(--font-num);

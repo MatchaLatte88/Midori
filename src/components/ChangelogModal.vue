@@ -34,7 +34,7 @@ function isLatest(release) {
 <template>
   <Teleport to="body">
     <div v-if="open" class="backdrop" @click.self="emit('close')">
-      <div class="modal k-panel" role="dialog" aria-label="Release notes">
+      <div class="modal k-pop" role="dialog" aria-label="Release notes">
         <header class="head">
           <div>
             <div class="k-eyebrow">Release notes</div>
@@ -77,7 +77,7 @@ function isLatest(release) {
   display: grid;
   place-items: center;
   padding: 40px 20px;
-  background: rgba(2, 6, 16, 0.45);
+  background: rgba(0, 0, 0, 0.55);
 }
 .modal {
   display: flex;
@@ -85,7 +85,6 @@ function isLatest(release) {
   width: min(620px, 100%);
   max-height: 100%;
   padding: 18px 20px 4px;
-  background: linear-gradient(160deg, var(--tile-bg), var(--tile-bg));
 }
 
 .head {

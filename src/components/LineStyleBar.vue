@@ -22,7 +22,7 @@ const emit = defineEmits(['update']);
 </script>
 
 <template>
-  <div class="style-bar k-panel">
+  <div class="style-bar k-pop">
     <span class="k-eyebrow">Line</span>
 
     <div class="group">
@@ -118,8 +118,8 @@ const emit = defineEmits(['update']);
 }
 .pick:hover { background: var(--glass-strong); }
 .pick.is-active {
-  border-color: var(--accent-brd);
-  background: var(--accent-bg);
+  border-color: var(--line-strong);
+  background: var(--sel-bg);
 }
 
 /* The preview rule. Width and style are set inline per button; everything the

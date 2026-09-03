@@ -5,6 +5,8 @@
  */
 import { reactive, readonly } from 'vue';
 
+import { CHART_STYLE_IDS, DEFAULT_CHART_STYLE } from '../components/chart/chartStyles.js';
+
 const state = reactive({
   datasets: [],          // metadata for every dataset on disk
   symbol: null,          // currently charted symbol
@@ -35,6 +37,24 @@ const state = reactive({
   /* Active chart indicators. `uid` exists because the same indicator can be
    * added twice with different periods — a 20 and a 50 SMA are two entries. */
   indicators: [],
+
+  /* The newest bar the chart is drawing, for the instrument bar above it.
+   *
+   * Published by the chart rather than fetched a second time: the price in the
+   * header and the last candle on the screen have to be the same price, and
+   * under a replay that is the bar at the playhead and not the newest bar on
+   * disk. One writer, so the two can never disagree.
+   *
+   * Null until a chart has drawn something. */
+  quote: null,
+
+  /* How price itself is drawn — see components/chart/chartStyles.js.
+   *
+   * A view preference rather than a property of the market, so it is shared by
+   * every chart in the app and remembered between sittings. Nothing downstream
+   * reads it: indicators, the engine and the legend all keep working off the
+   * real bars, so this changes the picture and nothing else. */
+  chartStyle: DEFAULT_CHART_STYLE,
 
   volumeProfile: {
     enabled: false,
@@ -160,6 +180,20 @@ export function toggleIndicator(uid) {
   ind.visible = !ind.visible;
 }
 
+/* ─── Quote ─────────────────────────────────────────────────────────────── */
+
+/**
+ * What the chart is currently showing at its right edge.
+ *
+ * @param {?object} q  `{ time, open, high, low, close, volume, prevClose }`,
+ *   or null where there is nothing on the chart. Everything derived from it —
+ *   the change, the percentage — is computed by whoever displays it, so the
+ *   store holds facts and not formatting.
+ */
+export function setQuote(q) {
+  state.quote = q;
+}
+
 /* ─── Volume profile ────────────────────────────────────────────────────── */
 
 export function setVolumeProfile(patch) {
@@ -217,6 +251,32 @@ function setPanel(side, open) {
   try {
     localStorage.setItem('midori.panels', JSON.stringify(state.panels));
   } catch (e) { /* private mode — the panel still moves, it just forgets */ }
+}
+
+/* ─── Chart style ───────────────────────────────────────────────────────── */
+
+/* Read the way the theme and the panels are, and for the same reason: a view
+ * preference that cannot be read back is a preference that does not persist,
+ * not an error anyone needs a banner about. */
+function storedChartStyle() {
+  try {
+    const id = localStorage.getItem('midori.chartStyle');
+    return CHART_STYLE_IDS.includes(id) ? id : DEFAULT_CHART_STYLE;
+  } catch (e) {
+    return DEFAULT_CHART_STYLE;
+  }
+}
+
+state.chartStyle = storedChartStyle();
+
+export function setChartStyle(id) {
+  if (!CHART_STYLE_IDS.includes(id)) {
+    throw new Error(`Unknown chart style "${id}". Known: ${CHART_STYLE_IDS.join(', ')}`);
+  }
+  state.chartStyle = id;
+  try {
+    localStorage.setItem('midori.chartStyle', id);
+  } catch (e) { /* private mode — the chart still changes, it just forgets */ }
 }
 
 /* ─── Theme ─────────────────────────────────────────────────────────────── */

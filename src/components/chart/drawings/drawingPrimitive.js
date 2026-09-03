@@ -6,54 +6,37 @@
  *
  * Drawn at zOrder 'top' — unlike the volume profile, a level the user placed
  * by hand should sit above the candles, because that is where they put it.
- */
-import {
-  FIB_LEVELS, HANDLE_RADIUS, fibPrices, measureStats, positionDirection, positionStats,
-} from './geometry.js';
-import {
-  DEFAULT_POSITION_STYLE, dashPattern, ENTRY, STOP, TARGET, normalizeOpacity,
-} from './model.js';
-
-function tokenColor(id) {
-  const s = getComputedStyle(document.documentElement);
-  const value = s.getPropertyValue(`--${id}`).trim();
-  return value || s.getPropertyValue('--accent').trim();
-}
-
-function chromeColors() {
-  const s = getComputedStyle(document.documentElement);
-  return {
-    text: s.getPropertyValue('--chart-text').trim(),
-    panel: s.getPropertyValue('--chart-bg').trim(),
-    pos: s.getPropertyValue('--pos').trim(),
-    neg: s.getPropertyValue('--neg').trim(),
-  };
-}
-
-/**
- * Fills a rectangle at a given opacity.
  *
- * Opacity is applied in exactly one place — globalAlpha — and never also baked
- * into the colour. Doing both multiplies them: a zone asked for at 0.13 came
- * out at 0.017, and a fib band at 0.005, which is invisible. Going through
- * globalAlpha alone also works with any colour notation a token might hold,
- * not just hex.
+ * What each tool actually paints lives with the tool, in tools/. This file owns
+ * only what is true of all of them: converting anchors to pixels, setting the
+ * stroke, and drawing the handles.
  */
-function fillRectAlpha(ctx, color, alpha, x, y, width, height) {
-  const previous = ctx.globalAlpha;
-  ctx.globalAlpha = previous * alpha;
-  ctx.fillStyle = color;
-  ctx.fillRect(x, y, width, height);
-  ctx.globalAlpha = previous;
-}
+import { HANDLE_RADIUS } from './geometry.js';
+import { dashPattern } from './model.js';
+import { specFor } from './registry.js';
+import { chromeColors, tokenColor } from './render.js';
 
-/* The midpoint of a gap, dashed finer than any stroke the bar can hand out so
- * it never reads as one of the two edges. */
-const MIDPOINT_DASH = [2, 4];
+export { formatPrice } from './render.js';
 
 class DrawingRenderer {
   constructor(source) {
     this._source = source;
+    /* Per-drawing scratch space, keyed by id. Two tools need something worked
+     * out during the paint to still be there when the pointer asks about them —
+     * an anchored VWAP's curve costs a pass over every bar, and the hit test
+     * has no bars to recompute it from. Cleared per frame for drawings that are
+     * no longer on the chart, so it cannot grow without bound. */
+    this._cache = new Map();
+  }
+
+  /** The scratch object for one drawing, created on first use. */
+  cacheFor(id) {
+    let entry = this._cache.get(id);
+    if (!entry) {
+      entry = {};
+      this._cache.set(id, entry);
+    }
+    return entry;
   }
 
   draw(target) {
@@ -65,129 +48,102 @@ class DrawingRenderer {
       ctx.lineJoin = 'round';
       ctx.lineCap = 'round';
 
+      /* Colours are resolved once for the frame rather than once per drawing.
+       * Every lookup is a getComputedStyle on the document element, and a chart
+       * with forty drawings on it at sixty frames a second was making several
+       * thousand of those a second — all of them returning the same six values,
+       * since the tokens cannot change inside one paint. */
+      const palette = new Map();
+      const colorOf = (id) => {
+        if (!palette.has(id)) palette.set(id, tokenColor(id));
+        return palette.get(id);
+      };
+      const chrome = chromeColors();
+
+      const live = new Set();
       for (const drawing of drawings) {
-        const pts = drawing.points.map(project);
-        if (pts.some((p) => p === null)) continue; // off the current scale
-        this._drawOne(ctx, mediaSize, drawing, pts, drawing.id === selectedId);
+        live.add(drawing.id);
+        const pts = this.screenPoints(drawing, mediaSize);
+        if (!pts) continue; // off the current scale
+        this._drawOne(ctx, mediaSize, drawing, pts, drawing.id === selectedId, colorOf, chrome);
       }
 
       // The shape currently being dragged out, before it is committed.
-      if (draft && draft.points.length > 0) {
-        const pts = draft.points.map(project);
-        if (!pts.some((p) => p === null)) {
+      if (draft && (draft.points.length > 0 || draft.screen)) {
+        const pts = this.screenPoints(draft, mediaSize);
+        if (pts) {
           ctx.globalAlpha = 0.75;
-          this._drawOne(ctx, mediaSize, draft, pts, false);
+          this._drawOne(ctx, mediaSize, draft, pts, false, colorOf, chrome);
           ctx.globalAlpha = 1;
         }
+      }
+
+      for (const id of this._cache.keys()) {
+        if (!live.has(id)) this._cache.delete(id);
       }
 
       ctx.restore();
     });
   }
 
-  _drawOne(ctx, size, drawing, pts, selected) {
-    const color = tokenColor(drawing.color);
-    const [a, b] = pts;
+  /**
+   * A drawing's anchors in pixels, or null when any of them is off the scale.
+   *
+   * A pane-anchored drawing does not go through the chart at all: its anchor is
+   * a fraction of the pane, so it survives panning by construction.
+   */
+  screenPoints(drawing, size) {
+    if (drawing.screen) {
+      return [{ x: drawing.screen.x * size.width, y: drawing.screen.y * size.height }];
+    }
+    const pts = drawing.points.map(this._source.project);
+    return pts.some((p) => p === null) ? null : pts;
+  }
 
+  _drawOne(ctx, size, drawing, pts, selected, colorOf, chrome) {
+    const spec = specFor(drawing.type);
+    if (!spec) return; // a type from a newer version of the app: skip, do not throw
+
+    const color = colorOf(drawing.color);
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
+    /* Text state is reset per drawing, not per label. A tool that left an
+     * alignment behind would silently move the next tool's labels, and with
+     * eighty-six of them that is a bug nobody would trace back. */
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
     /* Selection adds a pixel rather than doubling. Doubling reads fine at the
      * old fixed width of 1, but once the width is the user's own choice the
      * thickest stroke would double along with it and swamp the candles under
      * it. At width 1 both rules give the same 2px, so nothing that existed
      * before this setting looks different. */
     ctx.lineWidth = drawing.width + (selected ? 1 : 0);
-    /* The stroke pattern applies to the plain line shapes. Fib, measure,
-     * range profile and the position block set their own below: their dashes
-     * carry meaning — which level, which edge — rather than decoration, and a
-     * per-drawing style must not overwrite that. */
+    /* The stroke pattern applies to the plain line shapes. The tools whose
+     * dashes carry meaning — which fib level, which edge of a block — set their
+     * own inside draw(), and a per-drawing style must not overwrite that. */
     ctx.setLineDash(dashPattern(drawing.lineStyle));
 
-    switch (drawing.type) {
-      case 'horizontal':
-        this._line(ctx, 0, a.y, size.width, a.y);
-        this._priceTag(ctx, size, a.y, drawing.points[0].price, color);
-        break;
+    spec.draw(ctx, {
+      size,
+      pts,
+      drawing,
+      color,
+      selected,
+      chrome,
+      // For the tools that paint in a colour other than the drawing's own —
+      // a position block's two zones, which are semantic.
+      tokenColor: colorOf,
+      project: this._source.project,
+      bars: this._source.bars,
+      barsBetween: this._source.barsBetween,
+      cache: this.cacheFor(drawing.id),
+    });
 
-      case 'vertical':
-        this._line(ctx, a.x, 0, a.x, size.height);
-        break;
-
-      case 'trendline':
-        if (b) this._line(ctx, a.x, a.y, b.x, b.y);
-        break;
-
-      case 'ray':
-        if (b) {
-          // Extend past the second point to the far edge of the pane.
-          const dx = b.x - a.x;
-          const dy = b.y - a.y;
-          const len = Math.hypot(dx, dy);
-          if (len > 0) {
-            const reach = size.width + size.height;
-            this._line(ctx, a.x, a.y, a.x + (dx / len) * reach, a.y + (dy / len) * reach);
-          }
-        }
-        break;
-
-      case 'rectangle':
-        if (b) {
-          const x = Math.min(a.x, b.x);
-          const y = Math.min(a.y, b.y);
-          const w = Math.abs(b.x - a.x);
-          const h = Math.abs(b.y - a.y);
-          fillRectAlpha(ctx, color, 0.12, x, y, w, h);
-          ctx.strokeRect(x, y, w, h);
-        }
-        break;
-
-      case 'fvg':
-        if (b) this._fvg(ctx, a, b, color);
-        break;
-
-      /* Only the span is drawn here. The histogram inside it is a separate
-       * primitive underneath the candles — chrome the user placed belongs on
-       * top, a distribution belongs behind. */
-      case 'rangeprofile':
-        if (b) {
-          const x = Math.min(a.x, b.x);
-          const w = Math.abs(b.x - a.x);
-          fillRectAlpha(ctx, color, 0.05, x, 0, w, size.height);
-          ctx.setLineDash([4, 3]);
-          this._line(ctx, x, 0, x, size.height);
-          this._line(ctx, x + w, 0, x + w, size.height);
-          ctx.setLineDash([]);
-        }
-        break;
-
-      case 'fib':
-        if (b) this._fib(ctx, size, drawing, a, b, color);
-        break;
-
-      case 'measure':
-        if (b) this._measure(ctx, drawing, a, b);
-        break;
-
-      case 'position':
-      case 'long':
-      case 'short':
-        if (pts.length === 3) this._position(ctx, size, drawing, pts);
-        break;
-
-      default:
-        break;
-    }
-
-    // Handles are chrome, never dashed, whatever the drawing itself is.
+    // Chrome is never dashed, whatever the drawing itself is.
     ctx.setLineDash([]);
+    ctx.lineWidth = 1;
     if (selected) this._handles(ctx, pts, color);
-  }
-
-  _line(ctx, x1, y1, x2, y2) {
-    ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-    ctx.stroke();
+    if (drawing.locked && selected) this._lockMark(ctx, pts, color);
   }
 
   _handles(ctx, pts, color) {
@@ -202,229 +158,28 @@ class DrawingRenderer {
       ctx.stroke();
     }
     ctx.fillStyle = color;
-  }
-
-  _priceTag(ctx, size, y, price, color) {
-    const label = formatPrice(price);
-    ctx.font = '10px "DM Mono", ui-monospace, monospace';
-    const width = ctx.measureText(label).width + 8;
-    const x = size.width - width - 2;
-
-    ctx.fillStyle = color;
-    ctx.fillRect(x, y - 8, width, 16);
-    ctx.fillStyle = chromeColors().panel;
-    ctx.textBaseline = 'middle';
-    ctx.fillText(label, x + 4, y);
-    ctx.fillStyle = color;
-  }
-
-  _fib(ctx, size, drawing, a, b, color) {
-    const [from, to] = drawing.points;
-    const levels = fibPrices(from.price, to.price, FIB_LEVELS);
-    const left = Math.min(a.x, b.x);
-    const right = Math.max(a.x, b.x);
-
-    ctx.font = '10px "DM Mono", ui-monospace, monospace';
-    ctx.textBaseline = 'bottom';
-
-    for (let i = 0; i < levels.length; i++) {
-      const { level, price } = levels[i];
-      // Level fractions map linearly between the two anchor pixels.
-      const y = b.y + (a.y - b.y) * level;
-
-      ctx.setLineDash(level === 0 || level === 1 ? [] : [4, 3]);
-      ctx.lineWidth = level === 0.618 || level === 0.5 ? 1.5 : 1;
-      this._line(ctx, left, y, right, y);
-
-      ctx.setLineDash([]);
-      ctx.fillStyle = color;
-      ctx.fillText(`${(level * 100).toFixed(1)}%  ${formatPrice(price)}`, left + 4, y - 2);
-    }
-
-    // Shade the body of the retracement so the zone reads at a glance.
-    fillRectAlpha(ctx, color, 0.09, left, Math.min(a.y, b.y), right - left, Math.abs(b.y - a.y));
-    ctx.fillStyle = color;
-  }
-
-  /**
-   * A long or short position: the risk zone from entry to stop, the reward zone
-   * from entry to target, and the numbers that decide whether the trade is
-   * worth taking.
-   *
-   * Colour follows meaning, not direction: the stop side takes the loss colour
-   * and the target side the profit colour, so a short reads the same way round
-   * as a long. The defaults are red and green — the one place they belong on
-   * this chart, since a zone cannot be mistaken for a candle — but both colours
-   * and the fill opacity are per drawing, so several planned trades can be told
-   * apart on one chart.
-   */
-  _position(ctx, size, drawing, pts) {
-    const c = chromeColors();
-    const [entryPt, stopPt, targetPt] = drawing.points;
-    const stats = positionStats(entryPt.price, stopPt.price, targetPt.price);
-
-    const left = pts[ENTRY].x;
-    const right = pts[STOP].x;
-    const x = Math.min(left, right);
-    const width = Math.abs(right - left);
-
-    const yEntry = pts[ENTRY].y;
-    const yStop = pts[STOP].y;
-    const yTarget = pts[TARGET].y;
-
-    // Zones. Each spans from the entry line to its own level, so they meet at
-    // the entry and never overlap.
-    const opacity = normalizeOpacity(drawing.fillOpacity);
-    const profitColor = tokenColor(drawing.profitColor ?? DEFAULT_POSITION_STYLE.profitColor);
-    const lossColor = tokenColor(drawing.lossColor ?? DEFAULT_POSITION_STYLE.lossColor);
-
-    const zone = (yFrom, yTo, color) => {
-      const top = Math.min(yFrom, yTo);
-      const height = Math.abs(yTo - yFrom);
-      if (height < 0.5) return;
-      fillRectAlpha(ctx, color, opacity, x, top, width, height);
-    };
-
-    zone(yEntry, yStop, lossColor);
-    zone(yEntry, yTarget, profitColor);
-
-    // Level lines.
-    const level = (y, color, dashed) => {
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 1;
-      ctx.setLineDash(dashed ? [4, 3] : []);
-      this._line(ctx, x, y, x + width, y);
-      ctx.setLineDash([]);
-    };
-
-    level(yStop, lossColor, false);
-    level(yTarget, profitColor, false);
-    level(yEntry, c.text, true);
-
-    /* Everything is written inside the block, on the side facing the entry.
-     * Nothing hangs off the edges, so a label cannot be clipped by the pane or
-     * covered by anything the block itself draws. */
-    ctx.font = '10px "DM Mono", ui-monospace, monospace';
-
-    const label = (y, side, text, color) => {
-      ctx.fillStyle = color;
-      ctx.textBaseline = side === 'above' ? 'bottom' : 'top';
-      ctx.fillText(text, x + 5, side === 'above' ? y - 3 : y + 3);
-    };
-
-    // Which way the target lies decides which side of each line is "inwards".
-    const targetAbove = yTarget < yEntry;
-    const pct = (v) => (v == null ? '—' : `${v.toFixed(2)}%`);
-
-    // Target and stop are labelled towards the middle of their own zone.
-    label(yTarget, targetAbove ? 'below' : 'above',
-      `TP  ${formatPrice(stats.target)}   +${pct(stats.rewardPercent)}`, profitColor);
-    label(yStop, targetAbove ? 'above' : 'below',
-      `SL  ${formatPrice(stats.stop)}   −${pct(stats.riskPercent)}`, lossColor);
-
-    // The entry sits on the reward side, leaving the risk side free.
-    label(yEntry, targetAbove ? 'above' : 'below', `Entry  ${formatPrice(stats.entry)}`, c.text);
-
-    /* Direction and reward-to-risk go into the risk zone, right against the
-     * entry line. The direction is read off the anchors, never stored: dragging
-     * the target across the entry turns a long into a short, and the label has
-     * to follow the picture rather than what the block was called when it was
-     * drawn. */
-    const direction = positionDirection(stats.entry, stats.stop, stats.target);
-    const name = direction === 'long' ? 'LONG' : direction === 'short' ? 'SHORT' : 'POSITION';
-    const rr = stats.rr == null ? '—' : stats.rr.toFixed(2);
-
-    label(yEntry, targetAbove ? 'below' : 'above', `${name}   R:R ${rr}`, c.text);
-  }
-
-  /**
-   * A marked fair value gap.
-   *
-   * Painted the way the FVG indicator paints the same zone — body filled, both
-   * edges solid because those are the two prices anyone actually trades
-   * against, midpoint dashed — so a gap the user pinned and a gap the indicator
-   * found read as the same object rather than as a rectangle that happens to
-   * sit there. Nothing is written on it: a gap is usually a few pixels tall and
-   * there are a lot of them, so a label per box would cover the very candles
-   * the zone is there to be read against.
-   *
-   * The two edges take whatever stroke the drawing was given, so the style bar
-   * works on a gap the way it works on a line. The midpoint keeps its own dash:
-   * it is a different statement from the edges — where consequent encroachment
-   * sits, not where price stopped — and one that has to stay tellable apart
-   * from them at every setting.
-   */
-  _fvg(ctx, a, b, color) {
-    const x = Math.min(a.x, b.x);
-    const y = Math.min(a.y, b.y);
-    const w = Math.abs(b.x - a.x);
-    /* A gap thinner than a pixel is still a gap; without a floor it would
-     * silently vanish on a zoomed-out chart. Same floor, and the same reason,
-     * as in the indicator's own primitive. */
-    const h = Math.max(1, Math.abs(b.y - a.y));
-
-    fillRectAlpha(ctx, color, 0.13, x, y, w, h);
-
-    // Half-pixel offsets keep a 1px line on the pixel, not across two. The
-    // dash is the caller's — see the note above.
-    this._line(ctx, x, y + 0.5, x + w, y + 0.5);
-    this._line(ctx, x, y + h - 0.5, x + w, y + h - 0.5);
-
-    // Any thinner and the midpoint has nowhere to sit that is not already a line.
-    if (h > 6) {
-      ctx.setLineDash(MIDPOINT_DASH);
-      this._line(ctx, x, y + h / 2, x + w, y + h / 2);
-    }
-  }
-
-  _measure(ctx, drawing, a, b) {
-    const [from, to] = drawing.points;
-    const bars = this._source.barsBetween(from.time, to.time);
-    const stats = measureStats(from.price, to.price, bars);
-    const c = chromeColors();
-    const tone = stats.change >= 0 ? c.pos : c.neg;
-
-    ctx.strokeStyle = tone;
-    fillRectAlpha(ctx, tone, 0.12,
-      Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(b.x - a.x), Math.abs(b.y - a.y));
-
-    ctx.setLineDash([4, 3]);
-    ctx.strokeStyle = tone;
     ctx.lineWidth = 1;
-    this._line(ctx, a.x, a.y, b.x, b.y);
-    ctx.setLineDash([]);
-
-    const lines = [
-      `${stats.change >= 0 ? '+' : ''}${formatPrice(stats.change)}`,
-      stats.percent == null ? '—' : `${stats.percent >= 0 ? '+' : ''}${stats.percent.toFixed(2)}%`,
-      `${bars} bar${bars === 1 ? '' : 's'}`,
-    ];
-
-    ctx.font = '10px "DM Mono", ui-monospace, monospace';
-    const width = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 12;
-    const height = lines.length * 13 + 8;
-    const x = (a.x + b.x) / 2 - width / 2;
-    const y = Math.min(a.y, b.y) - height - 6;
-
-    ctx.fillStyle = tone;
-    ctx.fillRect(x, y, width, height);
-    ctx.fillStyle = chromeColors().panel;
-    ctx.textBaseline = 'top';
-    lines.forEach((line, i) => ctx.fillText(line, x + 6, y + 5 + i * 13));
   }
-}
 
-/** Prices span BTC at 100k and altcoins at 0.00001 — pick decimals to match. */
-/* Exported so an executed trade is labelled with the same precision as a
- * planned one — two blocks side by side that rounded differently would look
- * like two different prices. */
-export function formatPrice(p) {
-  const abs = Math.abs(p);
-  const decimals = abs >= 1000 ? 2 : abs >= 1 ? 4 : 8;
-  return p.toLocaleString('en-GB', {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  });
+  /**
+   * A padlock over the first anchor of a locked drawing.
+   *
+   * Only while it is selected: a locked drawing still has to look like the
+   * thing it is, and a chart with thirty locked levels would otherwise be a
+   * chart with thirty padlocks on it.
+   */
+  _lockMark(ctx, pts, color) {
+    const { x, y } = pts[0];
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(x + 10, y - 12, 3, Math.PI, 0);
+    ctx.stroke();
+    ctx.fillRect(x + 6, y - 12, 8, 6);
+    ctx.restore();
+  }
 }
 
 class DrawingPaneView {
@@ -450,6 +205,8 @@ export class DrawingPrimitive {
     this.project = null;
     /** Set by the host: how many bars lie between two timestamps. */
     this.barsBetween = () => 0;
+    /** Set by the host: the bars currently loaded, time in SECONDS. */
+    this.bars = () => [];
 
     this._requestUpdate = null;
     this._paneViews = [new DrawingPaneView(this)];
@@ -472,6 +229,16 @@ export class DrawingPrimitive {
 
   repaint() {
     this._requestUpdate?.();
+  }
+
+  /**
+   * The scratch space a tool filled in during its last paint.
+   *
+   * Exposed so the pointer layer can hit-test a curve the renderer worked out —
+   * see the anchored VWAP, which cannot be recomputed without the bars.
+   */
+  cacheFor(id) {
+    return this._paneViews[0].renderer().cacheFor(id);
   }
 
   paneViews() {

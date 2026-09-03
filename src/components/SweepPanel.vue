@@ -247,7 +247,7 @@ const describe = (params, sweep) => Object.keys(sweep?.ranges ?? {})
 
 <template>
   <div class="sweep">
-    <section class="k-panel setup">
+    <section class="setup">
       <header class="head">
         <span class="k-eyebrow">Auto backtest</span>
         <span v-if="session.symbol" class="market k-mono-label">
@@ -344,7 +344,7 @@ const describe = (params, sweep) => Object.keys(sweep?.ranges ?? {})
           </div>
         </div>
 
-        <button v-if="!running" class="btn btn--accent" :disabled="!canRun" @click="run">
+        <button v-if="!running" class="btn btn--primary" :disabled="!canRun" @click="run">
           Run sweep
         </button>
         <button v-else class="btn btn--danger" @click="stop">Stop</button>
@@ -356,7 +356,7 @@ const describe = (params, sweep) => Object.keys(sweep?.ranges ?? {})
       </template>
     </section>
 
-    <section class="k-panel output">
+    <section class="output">
       <div v-if="running" class="progress">
         <span class="k-eyebrow">{{ stage === 'loading' ? 'Loading bars' : 'Running' }}</span>
         <template v-if="progress">
@@ -446,7 +446,9 @@ const describe = (params, sweep) => Object.keys(sweep?.ranges ?? {})
 </template>
 
 <style scoped>
-.sweep { display: flex; gap: 12px; width: 100%; height: 100%; overflow: hidden; }
+/* Two flush columns with a line between them — the same layout rule the chart
+   views follow. See App.vue. */
+.sweep { display: flex; width: 100%; height: 100%; overflow: hidden; }
 
 .setup {
   display: flex;
@@ -454,15 +456,16 @@ const describe = (params, sweep) => Object.keys(sweep?.ranges ?? {})
   gap: 10px;
   width: 352px;
   flex: none;
-  padding: 18px;
+  padding: 16px;
   overflow-y: auto;
+  border-right: 1px solid var(--line);
 }
 .output {
   flex: 1;
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 18px;
+  padding: 16px 18px;
   overflow-y: auto;
 }
 
@@ -484,7 +487,7 @@ const describe = (params, sweep) => Object.keys(sweep?.ranges ?? {})
   font-size: 11.5px;
   cursor: pointer;
 }
-.strategy.is-active { border-color: var(--accent-brd); background: var(--accent-bg); color: var(--accent); }
+.strategy.is-active { border-color: var(--line-strong); background: var(--sel-bg); color: var(--txt); }
 
 .field { display: flex; align-items: center; justify-content: space-between; gap: 5px; }
 .field .input { width: 118px; flex: none; }

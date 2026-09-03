@@ -446,7 +446,7 @@ function reverse() {
   cursor: pointer;
 }
 .pill:hover { background: var(--glass-strong); }
-.pill.is-active { border-color: var(--accent-brd); background: var(--accent-bg); }
+.pill.is-active { border-color: var(--line-strong); background: var(--sel-bg); color: var(--txt); }
 .pill-side { font-family: var(--font-mono); font-size: 10px; font-weight: 700; }
 .pill.is-long .pill-side { color: var(--pos); }
 .pill.is-short .pill-side { color: var(--neg); }
