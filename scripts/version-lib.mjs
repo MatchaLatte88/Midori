@@ -4,7 +4,7 @@
  * else that carries a version number is generated from it, because a number
  * that lives in four files by hand is a number that will disagree with itself.
  *
- * Adapted from the versioning contract used in Katsumii. Midori has no Python
+ * Adapted from the versioning contract used in Katsumii. Midorii has no Python
  * backend, so the derived set is package.json, both root versions in
  * package-lock.json, and the generated module the renderer reads.
  */

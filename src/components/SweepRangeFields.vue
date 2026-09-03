@@ -135,17 +135,17 @@ function patchRange(key, patch) {
 /* Reads as a state, not a command: it says what the field currently is. */
 .sweep-toggle {
   padding: 2px 7px;
-  font-family: 'DM Mono', ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 9.5px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  border: 1px solid var(--line);
+  border: 1px solid var(--brd);
   border-radius: 4px;
-  background: transparent;
+  background: var(--glass);
   color: var(--faint);
   cursor: pointer;
 }
-.sweep-toggle:hover { border-color: var(--brd); color: var(--txt); }
+.sweep-toggle:hover { background: var(--glass-strong); color: var(--txt); }
 .sweep-toggle.is-on {
   border-color: var(--accent-brd);
   background: var(--accent-bg);

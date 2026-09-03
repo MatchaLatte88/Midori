@@ -8,10 +8,10 @@
  * a market order with nothing attached.
  *
  * Nothing attached is the point, not an omission. Protection put on from here
- * would be a number typed under time pressure; the position it opens is drawn
- * on the chart a moment later with its own stop and target line, and those are
- * dragged into place by looking at the chart. Decide the entry with the mouse,
- * decide the levels with the mouse.
+ * would be a number typed under time pressure; the position it opens is on the
+ * chart before the finger is off the button — a market order fills at the last
+ * price, now — and its stop and target are dragged off it by looking at the
+ * chart. Decide the entry with the mouse, decide the levels with the mouse.
  *
  * The size starts empty and stays whatever it is set to. A size left over from
  * a setup that is already over is the one mistake here that costs money, so it
@@ -52,7 +52,8 @@ function nudge(delta) {
 /* Ready, not merely active: a session is `active` from the moment Start is
  * pressed, and for the second or two the window takes to load there is no
  * session behind it for an order to reach. `ended` is the other end of the
- * same thing — the data ran out, so there is no next bar to fill on. */
+ * same thing — the data ran out, so an entry taken now could never be got out
+ * of. */
 const canSend = computed(() => replay.quickSize != null && replay.status === 'ready');
 
 function send(side) {
@@ -71,8 +72,8 @@ function send(side) {
       v-hint="{
         label: 'Buy at market',
         text: 'Sends a market order for the size beside this, with no stop and no target. '
-          + 'It fills on the bar after the one you are looking at, like every other order. '
-          + 'Put the levels on afterwards by dragging them off the position line.',
+          + 'It fills at once, at the last price on the chart plus the usual costs. '
+          + 'Put the levels on straight away by dragging them off the position line.',
       }"
       @click="send('buy')"
     >Buy</button>
@@ -105,8 +106,8 @@ function send(side) {
       v-hint="{
         label: 'Sell at market',
         text: 'Sends a market order for the size beside this, with no stop and no target. '
-          + 'It fills on the bar after the one you are looking at, like every other order. '
-          + 'Put the levels on afterwards by dragging them off the position line.',
+          + 'It fills at once, at the last price on the chart plus the usual costs. '
+          + 'Put the levels on straight away by dragging them off the position line.',
       }"
       @click="send('sell')"
     >Sell</button>
@@ -134,7 +135,7 @@ function send(side) {
   height: 26px;
   padding: 0 10px;
   border-radius: var(--radius-sm);
-  font-family: 'Plus Jakarta Sans', Inter, sans-serif;
+  font-family: var(--font-num);
   font-weight: 600;
   font-size: 12px;
   cursor: pointer;
@@ -162,15 +163,15 @@ function send(side) {
   justify-content: center;
   width: 20px;
   height: 24px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--brd);
   border-radius: var(--radius-sm);
-  background: transparent;
+  background: var(--glass);
   color: var(--sec);
   font-size: 11px;
   line-height: 1;
   cursor: pointer;
 }
-.arrow:hover:not(:disabled) { border-color: var(--brd); color: var(--txt); }
+.arrow:hover:not(:disabled) { background: var(--glass-strong); color: var(--txt); }
 .arrow:disabled { opacity: 0.35; cursor: default; }
 
 .input {
@@ -181,7 +182,7 @@ function send(side) {
   border-radius: var(--radius-sm);
   background: var(--glass);
   color: var(--txt);
-  font-family: 'DM Mono', ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   text-align: center;
   min-width: 0;

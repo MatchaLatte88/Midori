@@ -6,16 +6,18 @@ import IndicatorPanel from './components/IndicatorPanel.vue';
 import BacktestPanel from './components/BacktestPanel.vue';
 import ReplayBar from './components/ReplayBar.vue';
 import ReplayPanel from './components/ReplayPanel.vue';
+import TradeDock from './components/TradeDock.vue';
 import ResultsPage from './components/ResultsPage.vue';
 import SweepPanel from './components/SweepPanel.vue';
 import ChangelogModal from './components/ChangelogModal.vue';
 import HintTooltip from './components/HintTooltip.vue';
+import PanelToggle from './components/PanelToggle.vue';
 import { APP_VERSION } from './generated/version.js';
 import {
   clearError, initTheme, refreshDatasets, session, setError, setThemeMode, setTimeframe,
-  setView,
+  setView, togglePanel,
 } from './stores/session.js';
-import { replay } from './stores/replay.js';
+import { replay, switchTimeframe } from './stores/replay.js';
 
 /* The chart's own controls only mean something on the chart. Symbol and
  * timeframe are shared with a run, so they stay visible everywhere — a
@@ -30,6 +32,31 @@ const NAV = [
 ];
 
 const TIMEFRAMES = ['1m', '5m', '15m', '30m', '1h', '4h', '1d'];
+
+/**
+ * Changes the timeframe, including under a running replay.
+ *
+ * It used to be fixed for the length of a session, and the reason was real:
+ * the session counts indices into one array of bars, so swapping the array
+ * under it would move every trade it had taken. But reading the higher
+ * timeframe and trading the lower one is not a preference, it is the method —
+ * fixing it asks the person to trade blind or to start again.
+ *
+ * What makes it safe now is that a session keeps a clock as well as an index;
+ * `switchTimeframe` in the replay store, and `ReplaySession.rebase` under it,
+ * are where that is written down. The shared timeframe follows only once the
+ * session has actually moved, so a switch that could not be loaded leaves the
+ * two of them agreeing rather than disagreeing.
+ */
+async function chooseTimeframe(tf) {
+  if (tf === session.timeframe) return;
+  if (!replay.active) {
+    setTimeframe(tf);
+    return;
+  }
+  await switchTimeframe(tf);
+  if (replay.timeframe === tf) setTimeframe(tf);
+}
 
 const changelogOpen = ref(false);
 
@@ -59,7 +86,7 @@ onMounted(async () => {
   <header class="topbar">
     <button class="brand" title="Release notes" @click="changelogOpen = true">
       <span class="brand-mark">緑</span>
-      <span class="brand-name">Midori</span>
+      <span class="brand-name">Midorii<span class="brand-dot">.</span></span>
       <span class="brand-version">{{ APP_VERSION }}</span>
     </button>
 
@@ -77,23 +104,25 @@ onMounted(async () => {
 
     <span class="current-symbol">{{ session.symbol ?? 'No symbol' }}</span>
 
-    <!-- Locked while a replay runs: the session's bars are that timeframe, and
-         switching would leave the chart drawing one thing while the account was
-         playing out another. -->
+    <!-- Live under a running session as well; see chooseTimeframe above for
+         what makes that safe. Only greyed while a window is loading, which is
+         the one moment there are two answers to what the session is playing. -->
     <div
       class="tf-group"
       v-hint="replay.active ? {
         label: 'Timeframe',
-        text: 'Fixed while a replay is running — the session is playing out these bars. '
-          + 'Stop it to change timeframe.',
+        text: 'Changes under a running session too. The playhead stays at the same '
+          + 'instant, nothing already played is played again, and where the moment '
+          + 'falls inside a bar of the new timeframe that bar is drawn as far as it '
+          + 'has got.',
       } : null"
     >
       <button
         v-for="tf in TIMEFRAMES"
         :key="tf"
-        :disabled="replay.active"
+        :disabled="replay.status === 'loading'"
         :class="['btn', 'btn--sm', session.timeframe === tf ? 'btn--accent' : 'btn--default']"
-        @click="setTimeframe(tf)"
+        @click="chooseTimeframe(tf)"
       >{{ tf }}</button>
     </div>
 
@@ -132,10 +161,15 @@ onMounted(async () => {
          lightweight-charts a zero-sized container while hidden, which it does
          not survive without a resize on every return. Worth revisiting if the
          rebuild ever becomes noticeable. -->
+    <!-- v-show rather than v-if for the side panels: a download being set up or
+         a half-typed indicator has to survive being folded away, and unlike the
+         chart these hold nothing that minds a zero-sized container. -->
     <template v-if="session.view === 'chart'">
-      <DataManager />
+      <DataManager v-show="session.panels.left" />
+      <PanelToggle side="left" :open="session.panels.left" @toggle="togglePanel('left')" />
       <ChartPanel :symbol="session.symbol" :timeframe="session.timeframe" />
-      <IndicatorPanel />
+      <PanelToggle side="right" :open="session.panels.right" @toggle="togglePanel('right')" />
+      <IndicatorPanel v-show="session.panels.right" />
     </template>
 
     <!-- Replay is the chart with a playhead on it, so it is the same chart:
@@ -143,12 +177,18 @@ onMounted(async () => {
          they do on the chart view, because they are the same components. What
          changes is where the bars come from — see stores/replay.js. -->
     <template v-else-if="session.view === 'replay'">
-      <ReplayPanel />
+      <ReplayPanel v-show="session.panels.left" />
+      <PanelToggle side="left" :open="session.panels.left" @toggle="togglePanel('left')" />
       <div class="stage">
         <ReplayBar />
         <ChartPanel :symbol="session.symbol" :timeframe="session.timeframe" />
+        <!-- Under the chart, the way a terminal keeps it: what is open, what is
+             waiting, what is over. Only once there is an account for it to be
+             about — on the setup screen it would be three empty lists. -->
+        <TradeDock v-if="replay.active" />
       </div>
-      <IndicatorPanel />
+      <PanelToggle side="right" :open="session.panels.right" @toggle="togglePanel('right')" />
+      <IndicatorPanel v-show="session.panels.right" />
     </template>
 
     <BacktestPanel v-else-if="session.view === 'backtest'" />
@@ -210,9 +250,9 @@ onMounted(async () => {
   cursor: pointer;
   -webkit-app-region: no-drag;
 }
-.brand:hover { border-color: var(--brd); background: var(--glass); }
+.brand:hover { background: var(--glass); }
 .brand-version {
-  font-family: 'DM Mono', ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   color: var(--faint);
 }
@@ -229,12 +269,16 @@ onMounted(async () => {
   line-height: 1;
 }
 .brand-name {
-  font-family: 'Plus Jakarta Sans', Inter, sans-serif;
+  font-family: var(--font-num);
   font-weight: 700;
   letter-spacing: -0.01em;
 }
+/* The full stop is the mark, and the one place the ember reads as branding
+   rather than as a warning. */
+.brand-dot { color: var(--ember); }
+
 .current-symbol {
-  font-family: 'Plus Jakarta Sans', Inter, sans-serif;
+  font-family: var(--font-num);
   font-weight: 600;
   font-size: 13px;
 }
@@ -251,7 +295,7 @@ onMounted(async () => {
   border-radius: var(--radius-sm) var(--radius-sm) 0 0;
   background: none;
   color: var(--sec);
-  font-family: 'Plus Jakarta Sans', Inter, sans-serif;
+  font-family: var(--font-num);
   font-weight: 600;
   font-size: 12px;
   cursor: pointer;
@@ -304,7 +348,7 @@ onMounted(async () => {
   border-color: var(--neg);
 }
 .error-text {
-  font-family: 'DM Mono', ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11.5px;
   color: var(--neg);
   overflow-wrap: anywhere;
@@ -323,7 +367,9 @@ onMounted(async () => {
 }
 .error-close:hover { color: var(--txt); background: var(--glass); }
 
-/* The replay column: transport on top, chart filling the rest. */
+/* The replay column: transport on top, dock at the bottom, chart taking
+   whatever is left — which is most of it, and the point of moving the account
+   out of the side panel in the first place. */
 .stage {
   display: flex;
   flex-direction: column;

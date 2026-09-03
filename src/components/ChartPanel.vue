@@ -10,7 +10,8 @@ import {
 import { RangePrimitive } from './chart/rangePrimitive.js';
 import { ReplayPrimitive } from './chart/replayPrimitive.js';
 import {
-  TAG_REACH, closeButtonRect, draggableLevels, fieldForPrice, inRect, levelAt, levelRefusal,
+  TAG_REACH, closeButtonRect, draggableLevels, draggableOrders, fieldForPrice, inRect, levelAt,
+  levelRefusal, orderAt, orderCancelRect, orderPrice, orderRefusal,
 } from './chart/replayLevels.js';
 import { SessionPrimitive } from './chart/sessionPrimitive.js';
 import { HuntPrimitive } from './chart/huntPrimitive.js';
@@ -26,11 +27,12 @@ import FvgToolBar from './FvgToolBar.vue';
 import QuickTradeBar from './QuickTradeBar.vue';
 import { ENTRY, STOP, TARGET, isPositionTool } from './chart/drawings/model.js';
 import { orderFromPlan } from '../../shared/engine/plannedTrade.js';
+import { barIndexAt } from '../../shared/engine/replaySession.js';
 import { latestPage, prependBars, previousPage } from './chart/barPaging.js';
 import { datasetFor, session, setError, setVolumeProfile } from '../stores/session.js';
 import {
-  closePosition, deliverPrice, placeFromPlan, protectPosition, replay, replayMarks,
-  takeEnteredPlans,
+  cancelOrder, closePosition, deliverPrice, modifyOrder, openTradeManager, placeFromPlan,
+  protectPosition, replay, replayMarks, selectPosition, takeEnteredPlans,
 } from '../stores/replay.js';
 
 const props = defineProps({
@@ -231,6 +233,8 @@ function render() {
 
 /** How many replay bars are currently on the chart, or -1 for none. */
 let replayShown = -1;
+/** Which timeframe those bars are, so a switch is noticed rather than blended. */
+let replayShownTf = null;
 
 /**
  * Puts the revealed part of the replay window on the chart.
@@ -252,6 +256,16 @@ let replayShown = -1;
  */
 function applyReplayBars() {
   const full = replay.bars;
+
+  /* A timeframe switch replaces the whole window with a different number of
+   * bars, so nothing about what is on the chart carries over: it is redrawn
+   * and reframed, exactly as a session starting is. Without this the view
+   * would keep a logical range that means something else now — twelve hours
+   * of 5m bars and twelve hours of 1h bars are not the same picture. */
+  if (replayShownTf !== replay.timeframe) {
+    replayShownTf = replay.timeframe;
+    replayShown = -1;
+  }
   /* First pass for this chart instance — a session starting, or the view being
    * returned to while one is running. Either way the chart has to be aimed at
    * the playhead rather than at wherever it was left. */
@@ -308,10 +322,21 @@ function frameReplay() {
   });
 }
 
-/** The open position and the working orders, for the primitive to paint. */
+/**
+ * The open position and the working orders, for the primitive to paint.
+ *
+ * One drag channel and one hover channel for both kinds of thing that can be
+ * taken hold of. A level drag is `{ origin, field, price }` and an order drag
+ * is `{ orderId, price }`; the primitive tells them apart by which key is
+ * there. Hover is a string throughout — a field name, 'close', or 'order:7' /
+ * 'cancel:7' for one of the waiting orders.
+ */
 function pushReplayMarks() {
   replayPrimitive?.setMarks(
-    replay.active ? replayMarks() : null, replay.bars, levelDrag.value, levelHover.value,
+    replay.active ? replayMarks() : null,
+    replay.bars,
+    levelDrag.value ?? orderDrag.value,
+    levelHover.value,
   );
 }
 
@@ -323,7 +348,7 @@ function pushReplayMarks() {
  * the drag is a preview the primitive paints, and only the drop replaces the
  * protection — through protectPosition, so a level moved by hand becomes
  * exactly the order a level typed in becomes, live from the next bar like
- * everything else.
+ * every other resting order.
  *
  * The geometry, and the rule about which drops are refused, are in
  * chart/replayLevels.js where they can be checked without a chart.
@@ -338,9 +363,8 @@ const levelNotice = ref(null);
 /** True between pressing the close button and letting go over it. */
 const pendingClose = ref(false);
 
-/** Where the open position's levels are on screen, and how far they run. */
-function levelTargets() {
-  const position = replay.position;
+/** Where an open position's levels are on screen, and how far they run. */
+function levelTargets(position) {
   if (!replay.active || !position || !candles.value || !chart.value) return null;
 
   const levels = [];
@@ -366,15 +390,31 @@ function levelTargets() {
 }
 
 /**
- * The level a pointer has hold of, or null.
+ * The level a pointer has hold of and the position it belongs to, or null.
  *
  * Never while a tool is armed, and never while the ticket is waiting for a
  * price: both mean the next click was already promised to something else.
+ *
+ * Every open position is tested, not only the one being worked on — otherwise
+ * the second position on the chart could be seen and not touched, and the only
+ * way to its stop would be to go and select it in the panel first. The active
+ * one is tested first, so two blocks lying over each other resolve to the one
+ * already in hand rather than swapping under the pointer.
  */
 function levelUnder(point) {
   if (draw.activeTool.value !== 'cursor' || replay.picking) return null;
-  const targets = levelTargets();
-  return targets ? levelAt(point, targets.extent, targets.levels) : null;
+
+  const ordered = [
+    ...(replay.position ? [replay.position] : []),
+    ...replay.positions.filter((p) => p.id !== replay.activePositionId),
+  ];
+
+  for (const position of ordered) {
+    const targets = levelTargets(position);
+    const field = targets ? levelAt(point, targets.extent, targets.levels) : null;
+    if (field) return { field, position };
+  }
+  return null;
 }
 
 /**
@@ -402,29 +442,51 @@ function overClose(point) {
 /**
  * Records what the pointer is over, and repaints only when it matters.
  *
- * The levels change nothing about the picture — they are a cursor and a live
- * overlay. The close button does change: it fills when the pointer is on it. So
- * a repaint is asked for on the way in and on the way out, and never for the
- * hundreds of moves in between.
+ * A position's levels change nothing about the picture — they are a cursor and
+ * a live overlay. Three things do change it: the close button fills when the
+ * pointer is on it, an order's line brightens, and its × is only drawn while
+ * the line is pointed at. So a repaint is asked for on the way into and out of
+ * any of those, and never for the hundreds of moves in between.
  */
 function setLevelHover(field) {
   if (levelHover.value === field) return;
-  const wasClose = levelHover.value === 'close';
+  const paints = (v) => v === 'close' || (typeof v === 'string' && v.includes(':'));
+  const before = paints(levelHover.value);
   levelHover.value = field;
-  if (wasClose || field === 'close') pushReplayMarks();
+  if (before || paints(field)) pushReplayMarks();
+}
+
+/** Everything the pointer could be over on a running session, in priority. */
+function replayHover(point) {
+  if (overClose(point)) return 'close';
+  const order = orderHover(point);
+  if (order) return order;
+  return levelUnder(point)?.field ?? null;
 }
 
 function startLevelDrag(point) {
-  const field = levelUnder(point);
-  if (!field) return false;
+  const hit = levelUnder(point);
+  if (!hit) return false;
+  const { field, position } = hit;
+
   levelNotice.value = null;
+  /* Taking hold of a position's line is how it becomes the one being worked
+   * on: anything else would have the drag land on a different trade's stop
+   * than the one under the pointer.
+   *
+   * Selecting only, not opening the manager. A drag is work on the chart, and
+   * unfolding the side panel under someone who folded it away to get the room
+   * — every time they touch a stop — is the app arguing with them. A *click*
+   * does open it; see `dropLevel`. */
+  selectPosition(position.id);
+
   /* `origin` is which line was actually taken hold of, and it does not change
    * for the length of the drag. `field` is what the drag currently means, which
    * for one off the entry line is decided anew on every move. */
   levelDrag.value = {
     origin: field,
     field,
-    price: field === 'entry' ? replay.position.entryPrice : replay.position[field],
+    price: field === 'entry' ? position.entryPrice : position[field],
   };
   pushReplayMarks();
   return true;
@@ -468,18 +530,21 @@ function dropLevel() {
     return;
   }
 
-  /* Still the entry line, so the pointer never left it: a click on the
-   * position, not a level drawn off it. The entry itself is not a thing that
-   * can be moved — the position opened where it opened. */
-  if (field === 'entry') {
-    pushReplayMarks();
-    return;
-  }
-
-  /* Pressed and let go without moving: a click on the line, not a new level.
-   * Committing it anyway would cancel and re-place the same two orders, and the
-   * stored session would carry the churn. */
-  if (price === position[field]) {
+  /* Two ways of having moved nothing, and both of them are a click on the
+   * position rather than a level being placed.
+   *
+   * Still on the entry line means the pointer never left it — and the entry is
+   * not a thing that can be moved anyway, the position opened where it opened.
+   * A level dropped on the price it was already at is the same gesture on a
+   * different line; committing it would cancel and re-place the same two
+   * orders, and the stored session would carry the churn.
+   *
+   * So a click on any of a position's lines opens its manager. That is the
+   * whole gesture the layout is built around: point at a trade on the chart,
+   * and the panel is about that trade — including everything that cannot be
+   * dragged, which is the size to take off, the trail and the reversal. */
+  if (field === 'entry' || price === position[field]) {
+    openTradeManager(position.id);
     pushReplayMarks();
     return;
   }
@@ -494,7 +559,141 @@ function dropLevel() {
   protectPosition({
     stopLoss: field === 'stopLoss' ? Number(price.toPrecision(8)) : position.stopLoss,
     takeProfit: field === 'takeProfit' ? Number(price.toPrecision(8)) : position.takeProfit,
-  });
+  }, position.id);
+  pushReplayMarks();
+}
+
+/* ─── Taking hold of the orders that are still waiting ──────────────────────
+ *
+ * The same gesture as a level, on the other kind of line. A resting order used
+ * to be a thing you could see and not touch: moving it meant cancelling it in
+ * the panel and placing another, which is a new id, a new place in the book,
+ * and a moment with nothing in the market. The Broker has been able to amend an
+ * order in place all along — `modifyOrder`, tested since it was written — and
+ * nothing on this side ever asked it to.
+ *
+ * Which orders have a line, and which drops are refused, are in
+ * chart/replayLevels.js beside the equivalents for levels.
+ */
+
+/** { orderId, price } while an order is being dragged, else null. */
+const orderDrag = ref(null);
+/** True between pressing an order's × and letting go over it. */
+const pendingCancel = ref(null);
+
+/** Where the draggable orders are on screen, and how far their lines run. */
+function orderTargets() {
+  if (!replay.active || !candles.value || !chart.value) return null;
+
+  const orders = draggableOrders(replay.orders, replay.positions);
+  if (orders.length === 0) return null;
+
+  const rows = [];
+  for (const order of orders) {
+    const y = candles.value.priceToCoordinate(orderPrice(order));
+    if (y != null) rows.push({ id: order.id, y, order });
+  }
+  if (rows.length === 0) return null;
+
+  /* Only into the future: an order is waiting for bars that have not happened,
+   * so its line starts at the playhead. Which is also where its hit area
+   * starts — a line that could be grabbed to the left of where it is drawn
+   * would be grabbing at revealed history. */
+  const bar = replay.bars[replay.index];
+  const head = bar ? draw.project({ time: bar.time, price: bar.close })?.x : null;
+  return { rows, extent: { left: head ?? 0, right: chart.value.paneSize().width } };
+}
+
+/** The waiting order a pointer has hold of, or null. */
+function orderUnder(point) {
+  if (draw.activeTool.value !== 'cursor' || replay.picking) return null;
+  const targets = orderTargets();
+  if (!targets) return null;
+  const id = orderAt(point, targets.extent, targets.rows);
+  return id == null ? null : targets.rows.find((r) => r.id === id);
+}
+
+/**
+ * The order whose × is under the pointer, or null.
+ *
+ * Only on the line the pointer is already on: the button is drawn on hover and
+ * nowhere else, and a hit area for a button that is not painted is how an order
+ * gets cancelled by a mouse passing over the price axis.
+ */
+function cancelUnder(point) {
+  const row = orderUnder(point);
+  if (!row) return null;
+  const rect = orderCancelRect(chart.value.paneSize().width, row.y);
+  return inRect(point, rect) ? row : null;
+}
+
+/**
+ * What the pointer is over among the orders, as the primitive's hover string.
+ *
+ * One hit test rather than asking `cancelUnder` and then `orderUnder`: this
+ * runs on every pointer move across the chart, and the button is on the line
+ * anyway, so the line is the question and the button is a detail of the answer.
+ */
+function orderHover(point) {
+  const row = orderUnder(point);
+  if (!row) return null;
+  const rect = orderCancelRect(chart.value.paneSize().width, row.y);
+  return inRect(point, rect) ? `cancel:${row.id}` : `order:${row.id}`;
+}
+
+function startOrderDrag(point) {
+  const row = orderUnder(point);
+  if (!row) return false;
+  levelNotice.value = null;
+  orderDrag.value = { orderId: row.id, price: orderPrice(row.order) };
+  pushReplayMarks();
+  return true;
+}
+
+function moveOrderDrag(point) {
+  const price = candles.value?.coordinateToPrice(point.y);
+  if (price == null) return;
+  orderDrag.value = { ...orderDrag.value, price };
+  pushReplayMarks();
+}
+
+/**
+ * Drops the order — and only now does the book change.
+ *
+ * Amended rather than replaced, so the order keeps its id: a bracket sibling
+ * still knows it, the row in the dock does not jump, and there is never an
+ * instant with nothing in the market. Refusals are the two ways a drag can
+ * quietly ruin an order — onto a price it is already triggered at, or past its
+ * own stop — and they are turned away here rather than sent and discovered a
+ * bar later.
+ */
+function dropOrder() {
+  const { orderId, price } = orderDrag.value;
+  orderDrag.value = null;
+  levelHover.value = null;
+
+  const row = replay.orders.find((o) => o.id === orderId);
+  if (!row) {
+    // It filled or was cancelled while the pointer was down.
+    pushReplayMarks();
+    return;
+  }
+
+  // Pressed and let go without moving: a click on the line, not a new price.
+  if (price === orderPrice(row)) {
+    pushReplayMarks();
+    return;
+  }
+
+  const refusal = orderRefusal(row, price, replay.bars[replay.index]?.close);
+  if (refusal) {
+    levelNotice.value = refusal;
+    pushReplayMarks();
+    return;
+  }
+
+  const rounded = Number(price.toPrecision(8));
+  modifyOrder(orderId, row.type === 'limit' ? { limitPrice: rounded } : { stopPrice: rounded });
   pushReplayMarks();
 }
 
@@ -504,6 +703,8 @@ function forgetLevels() {
   levelHover.value = null;
   levelNotice.value = null;
   pendingClose.value = false;
+  orderDrag.value = null;
+  pendingCancel.value = null;
 }
 
 /* The overlay takes pointer events for the drawing tools, for these levels and
@@ -511,8 +712,9 @@ function forgetLevels() {
  * wins the cursor, because it is the thing on top. */
 const overlayOn = computed(() => draw.overlayActive.value || levelHover.value !== null);
 const overlayCursor = computed(() => {
-  if (levelHover.value === 'close') return 'pointer';
-  if (levelDrag.value || levelHover.value) return 'ns-resize';
+  const over = levelHover.value;
+  if (over === 'close' || String(over).startsWith('cancel:')) return 'pointer';
+  if (levelDrag.value || orderDrag.value || over) return 'ns-resize';
   return draw.cursorStyle.value;
 });
 
@@ -1049,10 +1251,20 @@ function onOverlayDown(event) {
     pendingClose.value = true;
     return;
   }
+  /* Then the button that cancels a waiting order, for the same reason: it sits
+   * on that order's line, which would otherwise take the press. */
+  const cancel = cancelUnder(p);
+  if (cancel) {
+    pendingCancel.value = cancel.id;
+    return;
+  }
   /* Then the open position's levels, which sit above everything drawn by hand
    * — a stop that could not be grabbed because a trend line happened to run
-   * under it would be the wrong way round. */
+   * under it would be the wrong way round — and then the waiting orders, which
+   * are below a live position's levels for the same reason in miniature: what
+   * is on decides before what might be. */
   if (startLevelDrag(p)) return;
+  if (startOrderDrag(p)) return;
   draw.onPointerDown(p.x, p.y, paneSize());
   syncDrawings();
 }
@@ -1063,10 +1275,14 @@ function onOverlayMove(event) {
     moveLevelDrag(p);
     return;
   }
-  /* The close button is asked about before the levels: it sits on the entry
-   * line, so both would answer, and a button that cannot be clicked because
-   * the line under it wants to be dragged is not a button. */
-  if (event.buttons === 0) setLevelHover(overClose(p) ? 'close' : levelUnder(p));
+  if (orderDrag.value) {
+    moveOrderDrag(p);
+    return;
+  }
+  /* The buttons are asked about before the lines they sit on, so that a button
+   * which cannot be clicked because the line under it wants to be dragged is
+   * never what gets built — see replayHover. */
+  if (event.buttons === 0) setLevelHover(replayHover(p));
   // Shift locks the drag to one axis; the state is read per event rather than
   // tracked, so releasing the key mid-drag takes effect on the next move.
   draw.onPointerMove(p.x, p.y, paneSize(), event.shiftKey);
@@ -1086,8 +1302,18 @@ function onOverlayUp(event) {
     if (overClose(localPoint(event))) closePosition();
     return;
   }
+  if (pendingCancel.value !== null) {
+    const id = pendingCancel.value;
+    pendingCancel.value = null;
+    if (cancelUnder(localPoint(event))?.id === id) cancelOrder(id);
+    return;
+  }
   if (levelDrag.value) {
     dropLevel();
+    return;
+  }
+  if (orderDrag.value) {
+    dropOrder();
     return;
   }
   draw.onPointerUp();
@@ -1098,13 +1324,43 @@ function onOverlayUp(event) {
  * handler even through the transparent overlay. That is what lets the overlay
  * stay out of the way until the pointer is actually over a drawing. */
 function onHostMove(event) {
-  if (!overlayEl.value || levelDrag.value) return;
+  if (!overlayEl.value || levelDrag.value || orderDrag.value) return;
   const p = localPoint(event);
   // Asked about first: these are on top of everything, so they decide the
   // cursor even where a drawing is under the pointer as well.
-  setLevelHover(overClose(p) ? 'close' : levelUnder(p));
+  setLevelHover(replayHover(p));
   draw.updateHover(p.x, p.y, paneSize());
 }
+
+/**
+ * Puts the chart on a finished trade the history has been asked about.
+ *
+ * A list of timestamps that cannot be got to is a receipt, not a review — the
+ * whole reason to look at a trade again is to see where it went in against
+ * what the market did next, and that is on the chart.
+ *
+ * The view is moved, never the playhead. Nothing about the session changes:
+ * the account is where it is, the bars that are revealed are the ones that
+ * were revealed, and scrolling back to look at something is exactly as safe as
+ * scrolling back with the mouse.
+ *
+ * Framed on the trade with as much room round it as the trade itself takes, so
+ * a scalp is not shown at a zoom where the candles are lines and a trade held
+ * for two days still has its context.
+ */
+watch(() => replay.focusedTrade, (n) => {
+  if (n == null || !chart.value || bars.length === 0) return;
+  const trade = replay.trades.find((t) => t.n === n);
+  if (!trade) return;
+
+  const from = barIndexAt(replay.bars, trade.openedAt);
+  const to = barIndexAt(replay.bars, trade.closedAt);
+  const pad = Math.max(12, (to - from) * 0.6);
+  chart.value.timeScale().setVisibleLogicalRange({
+    from: Math.max(0, from - pad),
+    to: Math.min(bars.length + 8, to + pad),
+  });
+});
 
 /* Colour goes through setColor, which also arms it for the next drawing; the
  * rest go through setLineStyle, which does the same for width and dash. */
@@ -1306,7 +1562,10 @@ watch(() => [replay.index, replay.barsVersion], () => {
 
 /* An order placed or cancelled changes nothing about the bars, so the marks
  * are pushed on their own rather than through a redraw. */
-watch(() => [replay.position, replay.orders], () => {
+watch(() => [
+  replay.positions, replay.activePositionId, replay.orders, replay.showClosedTrades,
+  replay.focusedTrade, replay.hoveredTrade,
+], () => {
   /* A refusal was about a level on an account that has since moved on; it has
    * had its bar to be read on. */
   levelNotice.value = null;

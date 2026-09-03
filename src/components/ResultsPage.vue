@@ -286,11 +286,11 @@ const axisLabel = (x) => (axisMode.value === 'aligned'
         <span class="k-mono-label faint">{{ runs.length }}</span>
       </header>
 
-      <p v-if="runs.length === 0" class="empty k-mono-label">
+      <p v-if="runs.length === 0" class="empty k-prose">
         Nothing stored yet. Run a backtest and it appears here.
       </p>
 
-      <p v-else class="hint k-mono-label faint">Ctrl-click to compare several.</p>
+      <p v-else class="hint k-prose faint">Ctrl-click to compare several.</p>
 
       <button
         v-for="r in runs"
@@ -314,9 +314,9 @@ const axisLabel = (x) => (axisMode.value === 'aligned'
     </aside>
 
     <section class="k-panel detail">
-      <div v-if="loading" class="placeholder k-mono-label">Loading…</div>
+      <div v-if="loading" class="placeholder k-prose">Loading…</div>
 
-      <div v-else-if="selected.length === 0" class="placeholder k-mono-label">
+      <div v-else-if="selected.length === 0" class="placeholder k-prose">
         Select a run.
       </div>
 
@@ -326,7 +326,7 @@ const axisLabel = (x) => (axisMode.value === 'aligned'
             <h2 class="title">
               {{ comparing ? `${selected.length} runs compared` : (detail?.strategyName ?? '—') }}
             </h2>
-            <p v-if="!comparing && detail" class="subtitle k-mono-label">
+            <p v-if="!comparing && detail" class="subtitle k-prose">
               {{ detail.symbol }} · {{ detail.timeframe }} ·
               {{ day(detail.from) }} → {{ day(detail.to) }} ·
               balance {{ money(detail.initialBalance) }}
@@ -476,7 +476,7 @@ const axisLabel = (x) => (axisMode.value === 'aligned'
               </button>
             </div>
 
-            <p v-if="shownDiffRows.length === 0" class="k-mono-label faint">
+            <p v-if="shownDiffRows.length === 0" class="k-prose faint">
               These runs were configured identically.
             </p>
 
@@ -594,10 +594,10 @@ const axisLabel = (x) => (axisMode.value === 'aligned'
 .library {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  width: 290px;
+  gap: 8px;
+  width: 302px;
   flex: none;
-  padding: 12px;
+  padding: 18px;
   overflow-y: auto;
 }
 .head { display: flex; align-items: baseline; justify-content: space-between; }
@@ -609,22 +609,22 @@ const axisLabel = (x) => (axisMode.value === 'aligned'
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 8px 9px;
+  padding: 13px 14px;
   text-align: left;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: transparent;
+  border: 1px solid var(--brd);
+  border-radius: var(--radius-md);
+  background: var(--glass);
   cursor: pointer;
 }
-.run-row:hover { border-color: var(--brd); }
+.run-row:hover { background: var(--glass-strong); }
 .run-row.is-active { border-color: var(--accent-brd); background: var(--accent-bg); }
 .run-top { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
 .run-name {
-  font-family: 'Plus Jakarta Sans', Inter, sans-serif;
+  font-family: var(--font-num);
   font-weight: 600;
   font-size: 12px;
 }
-.run-pnl { font-family: 'DM Mono', ui-monospace, monospace; font-size: 12px; }
+.run-pnl { font-family: var(--font-mono); font-size: 12px; }
 .run-meta { color: var(--sec); }
 .run-note {
   font-size: 11px;
@@ -637,8 +637,8 @@ const axisLabel = (x) => (axisMode.value === 'aligned'
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 16px;
+  gap: 16px;
+  padding: 18px;
   overflow-y: auto;
   /* A flex child will not shrink below its content by default, which would
      stop the trade chart from ever getting a height to fill. */
@@ -663,7 +663,7 @@ const axisLabel = (x) => (axisMode.value === 'aligned'
   border-radius: 5px;
   background: none;
   color: var(--sec);
-  font-family: 'Plus Jakarta Sans', Inter, sans-serif;
+  font-family: var(--font-num);
   font-weight: 600;
   font-size: 11px;
   cursor: pointer;
@@ -673,7 +673,7 @@ const axisLabel = (x) => (axisMode.value === 'aligned'
 .mode-btn.is-active { color: var(--accent); background: var(--accent-bg); }
 .title {
   margin: 0;
-  font-family: 'Plus Jakarta Sans', Inter, sans-serif;
+  font-family: var(--font-num);
   font-size: 17px;
   font-weight: 700;
   letter-spacing: -0.01em;
@@ -685,15 +685,15 @@ const axisLabel = (x) => (axisMode.value === 'aligned'
   width: 100%;
   height: 200px;
   display: block;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--brd);
+  border-radius: var(--radius-md);
   background: var(--glass);
 }
 /* Non-scaling strokes keep the line one pixel wide even though the viewBox is
    stretched to the panel — without it a wide panel gives a hairline and a
    narrow one a smear. */
 .line { fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
-.zero { stroke: var(--brd); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.zero { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
 
 .legend { display: flex; flex-wrap: wrap; gap: 12px; list-style: none; margin: 0; padding: 0; }
 .legend li { display: flex; align-items: center; gap: 5px; }
@@ -727,10 +727,10 @@ const axisLabel = (x) => (axisMode.value === 'aligned'
   gap: 3px;
   list-style: none;
   margin: 0;
-  padding: 8px 10px;
-  border: 1px solid var(--line);
+  padding: 13px 15px;
+  border: 1px solid var(--brd);
   border-left: 2px solid var(--accent-brd);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   background: var(--glass);
 }
 .notes li { color: var(--sec); }
@@ -755,13 +755,13 @@ const axisLabel = (x) => (axisMode.value === 'aligned'
 }
 .figures div { display: flex; flex-direction: column; gap: 2px; }
 .figures dt {
-  font-family: 'DM Mono', ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--faint);
 }
-.figures dd { margin: 0; font-family: 'DM Mono', ui-monospace, monospace; font-size: 14px; }
+.figures dd { margin: 0; font-family: var(--font-mono); font-size: 14px; }
 
 .breakdowns { display: flex; flex-wrap: wrap; gap: 16px; }
 .breakdown { flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 4px; }
@@ -769,7 +769,7 @@ const axisLabel = (x) => (axisMode.value === 'aligned'
 .table {
   width: 100%;
   border-collapse: collapse;
-  font-family: 'DM Mono', ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11.5px;
 }
 .table th {
@@ -809,7 +809,7 @@ const axisLabel = (x) => (axisMode.value === 'aligned'
 }
 .setting-row dd {
   margin: 0;
-  font-family: 'DM Mono', ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11.5px;
   text-align: right;
   overflow-wrap: anywhere;

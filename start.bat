@@ -1,6 +1,6 @@
 @echo off
 rem ============================================================================
-rem  Midori - launcher
+rem  Midorii - launcher
 rem
 rem  Until M6 produces an installer, the app runs from source: Vite serves the
 rem  renderer and Electron loads it. This script wires both together and closes
@@ -12,7 +12,7 @@ rem                       server - use this to check what a user would get
 rem ============================================================================
 
 setlocal
-title Midori
+title Midorii
 cd /d "%~dp0"
 
 set "PORT=5300"
@@ -20,7 +20,7 @@ set "USEBUILD="
 if /i "%~1"=="/build" set "USEBUILD=1"
 
 echo.
-echo   Midori
+echo   Midorii
 echo   ------
 echo.
 
@@ -60,7 +60,7 @@ if defined USEBUILD (
     pause
     exit /b 1
   )
-  echo   Starting Midori from dist\ ...
+  echo   Starting Midorii from dist\ ...
   echo.
   call npx electron .
   goto done
@@ -73,13 +73,13 @@ set "STARTEDVITE="
 call npx wait-on tcp:%PORT% -t 1500 >nul 2>&1
 if errorlevel 1 (
   echo   Starting the dev server on port %PORT% ...
-  start "Midori dev server" /min cmd /c "npx vite"
+  start "Midorii dev server" /min cmd /c "npx vite"
   set "STARTEDVITE=1"
   call npx wait-on tcp:%PORT% -t 60000
   if errorlevel 1 (
     echo.
     echo   The dev server did not come up on port %PORT%.
-    echo   Check the minimised "Midori dev server" window for the reason.
+    echo   Check the minimised "Midorii dev server" window for the reason.
     echo.
     pause
     goto cleanup
@@ -88,7 +88,7 @@ if errorlevel 1 (
   echo   Reusing the dev server already running on port %PORT%.
 )
 
-echo   Starting Midori...
+echo   Starting Midorii...
 echo.
 call npx electron .
 

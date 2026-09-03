@@ -87,7 +87,7 @@ const percent = (v) => Math.round(v * 100);
   width: 13px;
   height: 13px;
   border-radius: 3px;
-  border: 1px solid var(--brd);
+  border: 1px solid var(--line);
   padding: 0;
   cursor: pointer;
 }

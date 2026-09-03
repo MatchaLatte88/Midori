@@ -1,4 +1,4 @@
-# Midori — Architektur
+# Midorii — Architektur
 
 Lokales Backtesting und Trading-Bot-Entwicklung als Desktop-App. Einmalkauf statt Abo,
 keine Cloud, keine Anmeldung. Zwei Arbeitsweisen auf einem Kern: **Replay** (Bar für Bar
@@ -20,17 +20,17 @@ Keine nativen Module. Das ist eine bewusste Einschränkung: jedes native Modul m
 jedem Electron-Update neu gebaut werden und verkompliziert das Signieren des Installers.
 Deshalb auch kein DuckDB (siehe Abschnitt 3).
 
-UI-Sprache ist Englisch, das Design folgt der „Living Data"-Sprache der Katsumii-App
+UI-Sprache ist Englisch, das Design folgt der „Stille Karten"-Sprache (Abschnitt 10)
 (Abschnitt 10).
 
 ## 2. Warum Marktdaten nie mitgeliefert werden
 
 Der kommerzielle Knackpunkt liegt nicht im Code, sondern in den Datenlizenzen. Praktisch
-jeder freie Anbieter untersagt die Weiterverbreitung seiner Daten. Midori umgeht das nicht,
+jeder freie Anbieter untersagt die Weiterverbreitung seiner Daten. Midorii umgeht das nicht,
 sondern vermeidet es strukturell:
 
-**Midori liefert keine Marktdaten aus und speichert keine auf fremden Servern.** Die App
-lädt auf Anforderung des Nutzers in dessen eigenes Benutzerverzeichnis. Damit ist Midori
+**Midorii liefert keine Marktdaten aus und speichert keine auf fremden Servern.** Die App
+lädt auf Anforderung des Nutzers in dessen eigenes Benutzerverzeichnis. Damit ist Midorii
 ein Werkzeug wie ein Texteditor, kein Datenprodukt — und verkaufbar, ohne Datenlizenzen zu
 erwerben.
 
@@ -569,7 +569,7 @@ Ein Profil ist nur so gut wie die Auflösung der Bars, aus denen es gebaut wird.
 gerade angezeigten Bars profiliert, bekommt auf dem 4h-Chart eine gröbere Antwort als auf
 dem 5m-Chart — gleicher Markt, anderer POC.
 
-**Midori baut das Profil immer aus den 1m-Bars**, unabhängig vom angezeigten Timeframe. Der
+**Midorii baut das Profil immer aus den 1m-Bars**, unabhängig vom angezeigten Timeframe. Der
 Timeframe ändert die Kerzen, nie das Profil. Genau dafür ist die Datenhaltung aus
 Abschnitt 3 ausgelegt.
 
@@ -801,13 +801,55 @@ Eine Order kann damit nie auf der Bar ausgeführt werden, die sie erzeugt hat. D
 beseitigt den häufigsten Selbstbetrug im Backtesting: auf einen Schlusskurs zu reagieren und
 zugleich zu diesem Schlusskurs zu handeln, was niemand kann.
 
+### Netting oder Hedging
+
+Der Broker hält eine Liste von Positionen und liest einen Fill, der keine bestehende Position
+nennt, je nach Modus verschieden:
+
+- **`netting`** (Standard, und was jeder Backtest benutzt) — es gibt eine Position, eine Order
+  in die Gegenrichtung reduziert oder dreht sie, ein Nachkauf mittelt den Einstieg. Das tut ein
+  Börsenkonto, und dagegen ist jede Strategie hier geschrieben.
+- **`hedging`** (was eine Replay-Sitzung benutzt) — der Fill eröffnet eine Position **neben**
+  den bestehenden, mit eigenem Einstieg, eigenem Stop und eigenem abgeschlossenen Trade. Long
+  und Short können gleichzeitig offen sein.
+
+Warum eine Sitzung das andere braucht, und wie eine Order sagt, worauf sie wirkt, steht in
+Abschnitt 8d unter „Zwei Positionen sind zwei Meinungen". `broker.position` bleibt in beiden
+Fällen lesbar — im Netting die einzige, im Hedging die älteste offene —, damit alles, was vor
+der Liste geschrieben wurde, unverändert weiterläuft.
+
+Was mit einer offenen Position getan werden kann — teilweise schließen, den Stop verschieben
+statt neu setzen, Break-even, Trailing —, steht ebenfalls in 8d; die Reihenfolge, in der ein
+Trailing Stop innerhalb einer Bar bewegt wird, ist dabei keine Detailfrage, sondern die
+Korrektheitsfrage.
+
+### Die eine Tür aus der Regel heraus: `fillNow`
+
+Die Regel richtet sich gegen eine *Strategie*, die auf einen Schluss reagiert, auf den sie
+nicht rechtzeitig hätte reagieren können. Ein Mensch, der im Replay auf Buy klickt, steht
+andersherum da: Der Schluss unter dem Abspielkopf **ist** der letzte Preis auf dem Schirm, und
+eine Market-Order nimmt in genau diesem Moment genau diesen Preis, plus Spread und Slippage.
+Ihn auf das Open der nächsten Bar warten zu lassen, berechnet dem Klick einen zufälligen Gap
+für eine Entscheidung, die längst gefallen ist — und lässt den Chart bis dahin ohne Position,
+an die ein Stop gehängt werden könnte.
+
+`Broker.fillNow(order)` füllt deshalb eine Market-Order sofort zum letzten Preis. Es ist
+bewusst ein eigener Aufruf und kein Modus: `processBar` kommt nicht daran, nur ein Aufrufer,
+der die Order in der Hand hält, kann sie durchdrücken — praktisch `ReplaySession` und sonst
+nichts. Ein Backtest ruft es nie auf. Alles andere ist der gewöhnliche Fill-Weg: dieselben
+Kosten, dieselbe Positionsrechnung, dieselbe Klammer. `fill.resolution` trägt `immediate`,
+damit ein so entschiedener Fill nie mit einem verwechselt wird, den eine Bar entschieden hat.
+
+Ruhende Orders — Limit, Stop, jede Klammer — bleiben unberührt bei der Regel: Sie können nur
+von den Bars beantwortet werden, die danach kommen.
+
 ### Die Intrabar-Frage
 
 Eine 1h-Bar, die Stop und Ziel berührt, sagt nichts darüber, was zuerst kam. Übliche
 Backtester raten — meist zugunsten des Stops, was ehrlich, aber pessimistisch ist, oder
 zugunsten des Ziels, was jedes Ergebnis stillschweigend schönt.
 
-Midori muss nicht raten. Es speichert ohnehin 1m-Bars, also wird ein Fill auf der 1h-Bar
+Midorii muss nicht raten. Es speichert ohnehin 1m-Bars, also wird ein Fill auf der 1h-Bar
 aufgelöst, indem die sechzig Minuten der Stunde der Reihe nach durchlaufen werden. Erreicht
 wird, was zuerst erreicht wurde.
 
@@ -835,14 +877,17 @@ und kein Widerspruch: Der Unterschied entsteht genau dort, wo es eng wird.
 - **Klammern**: Stop und Ziel werden zusammen mit dem Einstieg platziert und heben einander
   auf, sobald eines ausgeführt wird. Eine Position bleibt nie mit einer verwaisten Order zurück.
 - **Klammern an ruhenden Orders** werden erst beim Fill platziert (`_attachBracket`). Bei einem
-  Markteinstieg geht das vorab, weil er auf der nächsten Bar füllt; bei einer Limit- oder
+  Markteinstieg geht das vorab, weil er füllt, bevor eine dieser Orders zum ersten Mal geprüft
+  wird — die Position ist dann da; bei einer Limit- oder
   Stop-Order nicht: Zwei lebende Orders gegen eine Position, die es noch nicht gibt, würden
   entweder in die falsche Richtung eröffnen oder sich — da `reduceOnly` — beim ersten Berühren
   selbst löschen und den Einstieg später ungeschützt füllen lassen. Die Level reisen deshalb auf
   der Order mit und werden in dem Moment zu Orders, in dem es die Position wird — genau das, was
   eine Börse mit einer angehängten OCO tut. Da `_fillAgainst` die Orderliste vor dem Durchlauf
   einfriert, sind sie ab dem **nächsten** Schritt scharf: mit Minutendaten die nächste Minute
-  derselben Bar, sonst die nächste Bar.
+  derselben Bar, sonst die nächste Bar. Bei einem Einstieg über `fillNow` liegen sie schlicht
+  bereit, wenn die nächste Bar verarbeitet wird — was dort die ehrliche Antwort ist: Die Bar
+  unter dem Abspielkopf ist bereits geschlossen, in ihr kann nichts mehr im Markt gewesen sein.
 - **Abstände statt Level.** Ein Klammerschenkel ist entweder ein absoluter Preis oder ein
   *Abstand zum Fill* — nie beides, das wird abgelehnt. Der Abstand wird am tatsächlich gezahlten
   Preis gemessen, Spread und Slippage inbegriffen, damit ein Plan mit „Risiko 500" auch dann 500
@@ -1232,15 +1277,31 @@ Die Bar unter dem Abspielkopf ist die letzte **abgeschlossene**. Alles danach is
 versteckt, sondern existiert für die Sitzung nicht: Der Chart bekommt `bars.slice(0, index+1)`,
 also kann ein Indikator eine nicht aufgedeckte Bar nicht sehen, weil sie nicht im Array ist. Das
 ist eine stärkere Zusage, als Kerzen auszublenden, und dieselbe, die die Engine einer Strategie
-gibt.
+gibt. Nichts kann von einem Preis entschieden werden, den niemand gesehen hat.
 
-Eine Order, die beim Stand auf Bar *i* gegeben wird, wird gegen Bar *i+1* geprüft — beim Schritt,
-der sie aufdeckt. Exakt die Backtest-Regel: Eine Order füllt nie auf der Bar, die sie erzeugt hat.
+Eine **ruhende** Order, die beim Stand auf Bar *i* gegeben wird, wird gegen Bar *i+1* geprüft —
+beim Schritt, der sie aufdeckt. Exakt die Backtest-Regel, und die einzig mögliche: Nur die Bars
+danach können ein Limit oder einen Stop beantworten.
 
-Look-ahead ist im Replay ein anderes Problem als im Backtest, weil der Mensch davor einfach
-hinsehen kann. Nichts im Code verhindert das. Was er verhindern kann, ist, dass das **Konto**
-davon profitiert: Der Fill-Preis kommt von der Bar nach der Entscheidung, mit demselben Spread,
-derselben Slippage und derselben Kommission, die eine Strategie gezahlt hätte.
+### At market heißt jetzt
+
+Eine **Market-Order** füllt dagegen sofort, zum letzten Preis auf dem Schirm (`fillNow`,
+Abschnitt 8), mit demselben Spread, derselben Slippage und derselben Kommission, die eine
+Strategie gezahlt hätte. Das ist kein Look-ahead — dieser Schluss ist für die Sitzung der
+neueste existierende Preis —, sondern schlicht das, was eine Market-Order tut.
+
+Der praktische Unterschied ist der eigentliche Punkt: Die Position steht unter der Hand, die
+sie geöffnet hat. Stop und Ziel lassen sich sofort von ihrer Linie herunterziehen, statt eine
+Bar lang ins Leere zu greifen. Dasselbe gilt für „Close": Es ist im selben Moment flach.
+
+Der Preis dafür ist ehrlich zu nennen: Ein Backtest füllt seine Market-Orders weiterhin zum
+Open der Folgebar, weil eine Strategie auf den Schluss nicht rechtzeitig reagieren kann. Eine
+von Hand gehandelte Sitzung und ein Bot-Lauf füllen also nach zwei verschiedenen Konventionen —
+gleich teuer, aber nicht am gleichen Kurs. Beim Vergleich der beiden ist das mitzudenken.
+
+Look-ahead ist im Replay ohnehin ein anderes Problem als im Backtest, weil der Mensch davor
+einfach hinsehen kann. Nichts im Code verhindert das. Was er verhindern kann, ist, dass das
+**Konto** billiger davonkommt als ein echtes.
 
 ### Warum der Broker jetzt in `shared/` liegt
 
@@ -1270,8 +1331,11 @@ andere Bar.
 
 Während einer Sitzung zeichnet der Chart deshalb, was in `stores/replay.js` liegt, und lädt
 selbst nichts. Vorwärts-Chunks werden **angehängt** — die einzige Richtung, die bestehende
-Indizes stehen lässt, und `ReplaySession.extend` prüft sie, statt ihnen zu vertrauen. Der
-Timeframe ist während einer Sitzung gesperrt: Ihre Bars *sind* dieser Timeframe.
+Indizes stehen lässt, und `ReplaySession.extend` prüft sie, statt ihnen zu vertrauen.
+
+Der Timeframe war aus demselben Grund gesperrt und ist es nicht mehr: Gewechselt wird jetzt
+über die **Uhr** der Sitzung statt über ihre Indizes — siehe „Der Timeframe wechselt unter der
+laufenden Sitzung" weiter unten.
 
 Geladen werden 1.500 Bars Vorlauf (Kontext und Indikator-Warmlauf) und ein Vorwärts-Chunk von
 höchstens 400 Bars.
@@ -1301,9 +1365,9 @@ stehen dürfen. Ohne Stop gibt es keine definierte Risikogröße, und statt eine
 der Knopf deaktiviert. Eine feste Stückzahl ist die zweite Option, nicht die erste.
 
 Eine ruhende Order trägt ihre Klammer mit und bekommt sie beim Fill (Abschnitt 8). „Protect" an
-der offenen Position macht dasselbe für eine Position, die schon läuft — und wie jede Order ab
-der nächsten Bar: Schutz, der nach dem Schluss einer Bar beschlossen wurde, kann während ihr
-nicht im Markt gewesen sein.
+der offenen Position macht dasselbe für eine Position, die schon läuft — und wie jede ruhende
+Order ab der nächsten Bar: Schutz, der nach dem Schluss einer Bar beschlossen wurde, kann
+während ihr nicht im Markt gewesen sein.
 
 ### Eine gezeichnete Position wird zur Order
 
@@ -1323,11 +1387,13 @@ Zwei Lesarten desselben Blocks (`shared/engine/plannedTrade.js`):
   hat einen Einstieg, den der Markt hinter sich gelassen hat; was noch etwas wert ist, ist seine
   Form — Risiko 500, Ziel 1000 —, und die wandert an den aktuellen Preis.
 
-**Die Abstände werden nicht hier ausgerechnet.** Eine Market-Order füllt auf der nächsten Bar, zu
-deren Open plus Spread und Slippage, und das steht beim Absenden nicht fest. Die Klammer geht
-deshalb als Offset an den Broker und wird am Fill zu Leveln. An echten Daten (BTCUSDT 15m, Plan
-mit 471,12 Risiko): Fill bei 95.205,21 statt der geplanten 94.224,89 — **tatsächlich
-eingegangenes Risiko exakt 471,12**. Bei der Pending-Variante wartete dieselbe Zeichnung als Buy
+**Die Abstände werden nicht hier ausgerechnet.** Eine Market-Order füllt zum letzten Preis plus
+Spread und Slippage, und was die ausmachen, ist Sache des Kontos und nicht dieser Datei. Die
+Klammer geht deshalb als Offset an den Broker und wird am Fill zu Leveln. An echten Daten
+(BTCUSDT 15m, Plan mit 471,12 Risiko, gemessen als eine Market-Order noch auf der Folgebar
+füllte): Fill bei 95.205,21 statt der geplanten 94.224,89 — **tatsächlich eingegangenes Risiko
+exakt 471,12**. Der Abstand zum gezeichneten Einstieg ist seither kleiner, die geprüfte
+Eigenschaft dieselbe. Bei der Pending-Variante wartete dieselbe Zeichnung als Buy
 Limit auf 94.224,89, füllte auf 94.234,32 und trug die gezeichneten Level; ihr Stop lag dann
 480,55 entfernt, weil sie etwas über dem gezeichneten Einstieg füllte. Beide Lesarten sind damit
 das, was auf der Zeichnung steht — nur eben zwei verschiedene Fragen an dieselbe Zeichnung.
@@ -1412,7 +1478,7 @@ Ein Stop wird verschoben, indem man auf den Chart sieht und ihn hinlegt, nicht i
 Zahl in ein Ticket tippt. Während die Maus unten ist, ändert sich am Konto nichts: Der Zug ist
 eine Vorschau, die das Primitive zeichnet, und erst das Loslassen ersetzt den Schutz — über
 dasselbe `protectPosition`, das die „Protect"-Zeile benutzt. Ein von Hand gezogenes Level wird
-damit exakt die Order, die ein getipptes wird, ab der nächsten Bar wie alles andere.
+damit exakt die Order, die ein getipptes wird, ab der nächsten Bar wie jede ruhende Order.
 
 Beide Legs gehen zusammen zurück in den Markt: `protectPosition` ersetzt, was auf der Position
 liegt — nur das gezogene zu senden, stornierte das andere.
@@ -1497,38 +1563,33 @@ gerundet (`lots`): Sie fällt aus einer Risikorechnung und ist fast nie rund, ab
 gab allem unter 1 acht Nachkommastellen — das ist, was der *Preis* einer billigen Münze braucht,
 nicht was eine Stückzahl braucht.
 
-### Was noch nicht gefüllt hat
+### Was der Klick sofort zeichnet
 
-Eine Market-Order hat keinen eigenen Preis; sie nimmt, was die nächste Bar aufmacht. Bis dahin
-stand deshalb **nichts** auf dem Chart: Zwischen dem Klick auf Buy und der Bar, die ihn
-beantwortet, sah es aus, als sei nichts passiert.
+Es gab einmal einen Zwischenzustand — eine abgeschickte, noch nicht gefüllte Market-Order —, und
+dafür eine eigene gestrichelte Darstellung (`announcedEntries`/`_announced`). Beides ist weg,
+weil der Zustand weg ist: Eine Market-Order füllt beim Absenden, also gibt es nie eine Position
+„auf dem Weg", sondern nur die Position selbst. Was der Chart zeichnet, ist der Block mit Entry,
+Stop und Ziel, ab der Bar unter dem Abspielkopf.
 
-`announcedEntries` zieht diese Orders aus dem Buch, und `_announced` zeichnet sie ab dem
-Abspielkopf nach rechts, auf Höhe des letzten Schlusskurses — gestrichelt, mit Dreieck,
-Richtungs-Chip und „next bar" dahinter. Das ist ausdrücklich **nicht** die Position, sondern ihre
-Ankündigung: Die Regel, dass eine Order frühestens auf der Bar nach der auslösenden füllt, bleibt
-unberührt, und die gestrichelte Linie sagt genau das. Der Schlusskurs ist die ehrliche Schätzung;
-gefüllt wird zum nächsten Open plus Kosten, und das weiß jetzt niemand.
+Dass dieser Block anfangs nur wenige Pixel breit ist, ist genau der Moment, in dem der Stop
+draufmuss — deshalb `TAG_REACH` in `replayLevels.js`: Die Tags am rechten Rand sind selbst
+Griffe, und die Reichweite eines Griffs beginnt nie weiter rechts als sie.
 
-Rechts vom Abspielkopf liegen nur die paar Bars, die der Chart als Offset hält — selten Platz für
-ein Label. Es rutscht deshalb an seiner eigenen Linie nach links, statt vom Pane abgeschnitten zu
-werden.
-
-Ein `reduceOnly`-Market ist nicht dabei: Er schließt, was schon gezeichnet ist, und ihn als
-ankommende Position zu melden, zeichnete eine zweite in die Gegenrichtung.
+Ruhende Orders werden weiterhin gestrichelt ab dem Abspielkopf nach rechts gezeichnet
+(`_orders`) — sie sind das, was noch nicht passiert ist.
 
 ### Die Schnellleiste
 
 Oben links im Chart: **Buy**, ein Größenfeld, **Sell**. Ein Klick schickt eine Market-Order über
-denselben Weg wie das Ticket, nur ohne Stop und ohne Ziel — gestrichelt sichtbar ab dem Klick
-(siehe „Was noch nicht gefüllt hat"), gefüllt auf der nächsten Bar. Die drei Style-Leisten teilen
+denselben Weg wie das Ticket, nur ohne Stop und ohne Ziel — gefüllt zum letzten Preis, mit der
+Position auf dem Chart, bevor der Finger vom Knopf ist. Die drei Style-Leisten teilen
 sich dieselbe Ecke — sie sind immer nur einzeln zu sehen, und solange eine Sitzung läuft, rücken
 sie unter die Leiste (`.is-trading`).
 
 Das Fehlen der Klammer ist der Zweck, nicht die Lücke. Schutz, der hier mit eingetragen würde,
-wäre eine unter Zeitdruck getippte Zahl; die eröffnete Position steht einen Moment später mit
-ihrer eigenen Stop- und Ziellinie im Chart, und die werden mit der Maus hingelegt. Einstieg mit
-der Maus entscheiden, Level mit der Maus entscheiden.
+wäre eine unter Zeitdruck getippte Zahl; die eröffnete Position steht sofort mit ihrer eigenen
+Stop- und Ziellinie im Chart, und die werden mit der Maus hingelegt. Einstieg mit der Maus
+entscheiden, Level mit der Maus entscheiden.
 
 Das Feld ist **leer**, bis eine Größe eingetragen wird, und beide Knöpfe sind bis dahin tot. Eine
 aus dem letzten Setup übriggebliebene Größe ist hier der eine Fehler, der Geld kostet, also wird
@@ -1555,6 +1616,300 @@ Behauptung, die die Sitzung nicht trägt. Was tatsächlich passiert ist, tragen 
 Genau das ist der Zweck: Eine von Hand gehandelte Sitzung lässt sich im Vergleich neben das
 legen, was eine Strategie über dieselben Bars getan hat.
 
+### Der Timeframe wechselt unter der laufenden Sitzung
+
+Den höheren Timeframe lesen und den niedrigeren handeln ist keine Vorliebe, sondern die
+Methode. Eine Sitzung, die ihren Timeframe für ihre ganze Länge festhält, verlangt entweder
+blind zu handeln oder von vorn anzufangen — beides schlimmer als das Problem, das die Sperre
+gelöst hat.
+
+Das Problem war echt: Die Sitzung zählt Indizes in *ein* Array, und ein Tausch darunter
+verschöbe jeden bereits getätigten Trade auf eine andere Bar. Gelöst wird es dadurch, dass die
+Sitzung neben dem Index eine **Uhr** führt — `clock`, das Ende der aufgedeckten Historie.
+Ein Index bedeutet nur gegen ein Bar-Array etwas; ein Zeitpunkt bedeutet auf jedem Timeframe
+dasselbe. `ReplaySession.rebase` rechnet aus ihm alles neu aus, und daraus folgen die drei
+Zusagen:
+
+- **Die Uhr bewegt sich nicht.** Abspielkopf und `startIndex` werden aus den Momenten neu
+  bestimmt, an denen sie stehen (`startTime`), nicht als Zahlen übernommen.
+- **Keine Bar wird zweimal gespielt.** Der Abspielkopf landet auf der letzten Bar des neuen
+  Timeframes, die zur Uhr **abgeschlossen** war. Nicht auf der letzten *begonnenen*: Eine noch
+  laufende Bar enthält Preise von nach dem Abspielkopf, und sie ganz zu zeichnen wäre
+  Look-ahead mit einer Kerze drumherum.
+- **Nichts nach der Uhr wird sichtbar.** Das Fenster darf spätere Bars enthalten, wie immer;
+  was existiert, entscheidet der Abspielkopf.
+
+Steht die Uhr **innerhalb** einer Bar des neuen Timeframes — 10:35 auf dem Stundenchart —,
+bleibt eine dritte Möglichkeit neben „ganz zeigen" (Zukunft) und „weglassen" (35 bereits
+gespielte Minuten zurücknehmen): Die Bar wird aus den 1m-Daten bis zur Uhr aggregiert und **so
+weit gezeichnet, wie sie gekommen ist** (`formingBar` im Store, `session.forming`). Der nächste
+Schritt **vollendet** sie, statt zur nächsten zu springen, und verarbeitet dabei nur die
+Minuten ab der Uhr — die davor sind schon im Konto.
+
+Das Konto wird nicht angefasst. `lastPrice` bleibt insbesondere, was er war: Der neueste
+gesehene Preis ändert sich nicht dadurch, dass der Chart in einer anderen Auflösung gezeichnet
+wird, und ihn auf den Schluss einer älteren Bar neu zu setzen verschöbe die Equity ohne dass
+das jemand entschieden hätte.
+
+Die Equity-Kurve geht dabei nie rückwärts: Ein Wechsel auf den langsameren Timeframe setzt den
+Abspielkopf in eine Bar, die vor dem letzten Kurvenpunkt begann, und `_recordEquity`
+überschreibt dann diesen Punkt, statt einen früheren anzuhängen.
+
+Der Umschalter ist der, der ohnehin oben rechts steht. Ein zweiter, nur fürs Replay, wäre
+dieselbe Frage an zwei Stellen. Der gemeinsame Timeframe folgt erst, wenn die Sitzung
+tatsächlich gewechselt hat — ein Wechsel, dessen Bars nicht geladen werden konnten, lässt die
+beiden übereinstimmen statt auseinanderlaufen.
+
+### Zwei Positionen sind zwei Meinungen
+
+Der Broker kannte eine Netto-Position: Ein Kauf auf einen Kauf mittelte den Einstieg, ein
+Verkauf reduzierte oder drehte. Das ist, was ein Börsenkonto tut, und wogegen jede Strategie
+hier geschrieben ist — deshalb bleibt es der Standard (`POSITION_MODE.NETTING`) und deshalb
+rechnet jeder Backtest weiter exakt wie zuvor.
+
+Für einen Menschen ist es falsch. Der zweite Einstieg ist eine zweite Meinung — ein Runner
+neben einem Scalp, ein nachgelegtes Level —, und ihn in den ersten hineinzumitteln zerstört
+genau das, was hinterher zu wissen wäre: ob jeder von beiden richtig war. Eine Replay-Sitzung
+läuft deshalb im **Hedging**-Modus: Jede Position steht für sich, mit eigenem Einstieg, eigenem
+Stop und eigenem abgeschlossenen Trade, und Long und Short können gleichzeitig offen sein.
+
+Damit das trägt, muss jede Order sagen können, *worauf* sie wirkt:
+
+- `order.positionId`, wo der Aufrufer sie kennt.
+- Sonst über `parentId`: `submitEntry` platziert Stop und Ziel, bevor es die Position gibt, also
+  ist die Id der Einstiegsorder der einzige Griff, den sie tragen können. Die Position merkt
+  sich ihn als `entryOrderId`.
+- Eine reduzierende Order ohne Ziel nimmt die **älteste Gegenposition** — first in, first out,
+  die eine Regel, die niemand nachschlagen muss.
+- Eine benannte Position, die es nicht mehr gibt, reduziert **nichts**. Die Order ist das
+  Geschwister eines gefüllten Ausstiegs und darf nicht auf einen anderen Trade übergreifen; sie
+  storniert sich, wie sie es im Netting-Modus immer getan hat.
+
+`broker.position` bleibt als „die Position" bestehen — im Netting die einzige, im Hedging die
+älteste offene —, damit alles, was vor der Liste geschrieben wurde, unverändert weiterläuft.
+Wer alle meint, liest `positions`.
+
+Im UI ist eine davon die **aktive**: die zuletzt geöffnete oder die angeklickte. Sie trägt die
+Griffe am Chart, den ×-Knopf und die Labels auf der Preisachse; die anderen werden gedämpft
+gezeichnet, jede mit ihrem *eigenen* Ergebnis an ihrer eigenen Einstiegslinie. Eine Marke mit
+der Summe aller offenen Positionen neben einer einzelnen Einstiegslinie wäre die selbstbewusst
+falscheste Zahl auf dem Chart. Eine Linie einer inaktiven Position anzufassen macht sie aktiv —
+sonst wäre die zweite Position sichtbar, aber unberührbar.
+
+### Was mit einer offenen Position getan werden kann
+
+Die Hälfte am ersten Ziel, den Stop auf Break-even, den Rest nachgezogen — das ist der größte
+Teil dessen, woraus das Halten eines Trades besteht, und nichts davon war erreichbar, solange
+es nur „ganz drin" und „flach" gab.
+
+- **Teilschließung** (`closePosition(tag, { size })`). Was weggeht, ist ein abgeschlossener
+  Trade mit eigenem Ergebnis; was bleibt, behält den Einstieg, zu dem es eröffnet wurde. Die
+  Klammer wird auf die Restgröße gekürzt: `reduceOnly` verhindert zwar Schaden, aber ein Stop
+  über eine Größe, die es nicht mehr gibt, ist eine falsche Zahl im Orderbuch.
+- **Level verschieben statt neu setzen** (`protect`, `modifyOrder`). Cancel-and-replace log über
+  zwei Dinge: Die neue Order hat eine andere Id, also verliert sie jeder, der die alte hielt —
+  und für einen Moment liegt gar kein Schutz im Markt. Ein Broker-Ticket ändert die Order, die
+  schon da ist, und das tut das hier jetzt auch. Wachsen darf eine ruhende Order dabei nicht:
+  eine größere Menge zum alten Preis ist eine neue Entscheidung.
+- **Break-even ist nicht der Einstieg** (`breakEvenPrice`). Die Kommission des Einstiegs ist
+  gezahlt, der Ausstieg kostet die Gebühr erneut plus halben Spread und Slippage — ein Stop auf
+  dem Einstieg ist also jedes Mal ein kleiner Verlust, und genau den abzustellen ist der Zweck
+  der Übung. Der Ausstiegsanteil ist eine Schätzung am Einstiegspreis, weil der Fill, auf den er
+  anfällt, noch nicht passiert ist.
+- **Trailing Stop** (`setTrailing`). Der Abstand ist ein Preis, kein Prozentsatz, denn das ist,
+  was ein Stop ist: wo der Trade falsch liegt. Gemessen wird vom bisher erreichten Extrem, und
+  bewegt wird nur zugunsten der Position — ein Trail, der auch lockern könnte, wäre eine Art,
+  einen Verlust stillschweigend zu verbreitern. `activateAt` hält ihn zurück, bis der Preis
+  durch ein Niveau gelaufen ist.
+- **Umdrehen** (`ReplaySession.reverse`). Schließen und in derselben Größe andersherum wieder
+  hinein, als eine Handlung. Als zwei ist es nicht dasselbe: Größe im Panel ablesen, ins Ticket
+  tippen, Seite wählen — drei Gelegenheiten, sich zu vertun, während der Grund fürs Umdrehen
+  noch auf dem Schirm läuft. Beide Fills gehen zum selben letzten Preis. Was herauskommt, ist
+  ehrlich zwei Trades: Der alte wird mit dem Ergebnis geschlossen, das er hatte. Eine Position,
+  die scheinbar „ihre Meinung ändert", versteckte einen Verlust in einem Gewinner. Der neue
+  Trade startet **ohne** Stop und Ziel — ein Stop, der einen Long schützte, ist da, wo ein Short
+  recht hat, und der Sinn des Umdrehens ist ja gerade, dass die alte Lesart falsch war.
+- **Schutz überlebt nichts** (`_closePosition`). Stop und Ziel sind `reduceOnly`, also schließen
+  sie nach dem Ende ihrer Position nichts mehr — sie lagen aber weiter im Buch, bis der Preis
+  eine von ihnen zufällig berührte. Für das Konto harmlos, überall dort falsch, wo jemand
+  hinsieht: eine Stop-Linie unter einem von Hand geschlossenen Trade, und eine Orderliste, die
+  anbietet, den Schutz eines beendeten Trades zu stornieren. Sie werden jetzt mit der Position
+  storniert, eingesammelt *bevor* sie aus der Liste fällt, weil `_resolvePosition` sie über
+  ebendiese findet. Ein Teilschluss lässt sie stehen und kürzt sie nur.
+
+**Wann getrailt wird, ist die eigentliche Korrektheitsfrage.** `_trail` läuft je Step *nach*
+den Fills dieses Steps, nie davor. Andersherum zöge das Hoch einer Bar den Stop aus dem Weg des
+Tiefs, das ihn getroffen hätte — der Look-ahead, der jeden gemessenen Trailing-Backtest besser
+aussehen lässt als den Trade. Mit Minutenbars ist die Reihenfolge exakt, ohne sie gilt die
+pessimistische Regel des Hauses, und `test/broker.test.js` prüft genau diesen Fall.
+
+### Vorspulen ist Spielen, nicht Springen
+
+`stepBars(n)` und `jumpTo(zeitpunkt)` gehen jede Bar durch die Engine: Orders füllen, wo sie
+gefüllt hätten, eine Bar, die Stop und Ziel berührt, wird über ihre Minuten entschieden, und
+eine Position, die ausgestoppt worden wäre, ist es. Ein Sprung, der bloß den Abspielkopf
+versetzte, wäre dieselbe Lüge wie Look-ahead, nur rückwärts erzählt: Er gäbe ein Konto zurück,
+das Bewegungen überlebt hat, die es nicht überlebt hat.
+
+Die reaktiven Spiegel werden dabei einmal am Ende aufgefrischt statt nach jeder Bar — ein
+Sprung über tausend Bars ist eine Antwort, nicht tausend Renders.
+
+Gesprungen wird nur **vorwärts**. Das Konto hat die Bars dahinter gehandelt; sie
+zurückzunehmen hieße zu entscheiden, welche der getätigten Trades nie stattgefunden haben.
+
+### Die Sitzung hinlegen und wieder aufnehmen
+
+„Speichern" legt ein *fertiges* Konto in die Bibliothek der Backtests. Das andere, was eine
+Sitzung sein kann, ist ein Nachmittag, der noch nicht vorbei ist: achtzig Bars gespielt, drei
+Positionen offen, und es ist Zeit aufzuhören. Ohne einen Ort dafür entscheidet die Länge einer
+Sitzung nicht der Markt, sondern der Feierabend.
+
+`ReplaySession.snapshot()` schreibt das Konto und die Uhr — **nicht die Bars**. Die liegen im
+Datenspeicher, sie sind morgen dieselben, und eine Kopie des Marktes danebenzulegen hieße, das
+einzige zu speichern, was nicht veralten kann. Beim Aufnehmen wird das Fenster um die Uhr neu
+geholt und der Abspielkopf über dasselbe `rebase` neu bestimmt, das ein Timeframe-Wechsel
+benutzt — deshalb darf das Fenster in anderer Größe zurückkommen, was es auch tut: Wie viele
+Bars vor einem Moment liegen, hat keine der beiden Seiten der anderen zugesagt.
+
+Zwei Identitäten müssen die Reise durch JSON überleben, weil der Broker sich auf beide
+verlässt: Eine wartende Order ist *dasselbe Objekt* wie ihr Eintrag in `orders`, und die
+Einstiegs-Fills einer Position sind dieselben Objekte wie ihre Einträge in `fills`. Geschrieben
+werden sie als Id-Liste und Index-Listen, und `Broker.restore` knüpft sie wieder zusammen;
+Kopien, die nur gleich aussähen, fielen beim ersten Storno auseinander. Die Id-Zähler werden
+dabei über die wiederhergestellten Werte gehoben — sonst trüge die nächste Order eine Id, die
+schon im Buch steht.
+
+Gespeichert wird unter `%APPDATA%/project-midori/replay-sessions/`, getrennt von den Läufen:
+Das hier ist Arbeitsstand, kein Ergebnis, und eine Bibliothek, die zum Vergleichen von
+Strategien gelesen wird, sollte keine halbgespielten Konten enthalten. Wieder aufnehmen löscht
+den Eintrag nicht, erneutes Hinlegen ersetzt ihn — die App zu schließen kostet damit die
+Sitzung am Abend, nicht die Sitzung.
+
+### Der Arbeitsplatz: Dock unten, Manager links
+
+Alles, was ein Konto hat, lag in einer 304-px-Spalte übereinander: Kennzahlen, offene
+Positionen mit sämtlichen Bedienelementen, Ticket, wartende Orders, abgeschlossene Trades,
+Notiz, Speichern, Pausieren. Zwei Positionen und eine Handvoll Trades sind mehr, als da
+hineinpasst — also begann das gewöhnlichste aller Manöver, eine Position zu schließen, mit
+Scrollen. Das ist das Falscheste, was man mit offener Position tun kann.
+
+In der Breite ist Platz für alles davon. Der Aufbau folgt deshalb dem, was ein Terminal tut:
+
+- **Dock unter dem Chart** (`TradeDock.vue`), Reiter *Positions / Orders / History*, eine Zeile
+  pro Position mit den Zahlen in festen Spalten — zwei Trades vergleicht man, indem man eine
+  Spalte hinuntersieht, und das geht nur, wenn Spalten Spalten sind. Rechts in der Reiterzeile
+  steht das Konto selbst, und es bleibt stehen, auch wenn das Dock zugeklappt ist. Genau eine
+  zerstörende Handlung pro Zeile (schließen); alles andere ist eine Art hinzusehen.
+- **Trade-Manager links** (`TradeManager.vue`), alles, was mit *einer* Position getan werden
+  kann: Stop und Ziel, Break-even, Trail, Teilschluss, Umdrehen. Ein **Klick** auf eine ihrer
+  Linien öffnet ihn für diesen Trade — worauf man zeigt, davon ist danach die Rede; nötigenfalls
+  klappt dafür die Seitenspalte auf. Ein **Ziehen** wählt die Position nur aus und lässt das
+  Panel in Ruhe: Wer es weggeklappt hat, um Platz zu haben, will es nicht bei jedem Stop
+  zurückbekommen.
+- **Ticket** (`OrderTicket.vue`) als eigener Reiter daneben. Die Seitenspalte handelt entweder
+  vom Hineinkommen oder von dem, was schon läuft, und das sind zwei Haltungen, die um dieselben
+  304 Pixel konkurrierten.
+
+Die Reiter der Seitenspalte schalten mit `v-show`, nicht mit `v-if`: Ein halb getippter Stop im
+Ticket muss einen Blick auf die offene Position überleben. Das ist dasselbe Argument, das die
+App für ihre Seitenpanele überhaupt macht.
+
+Zwei Reiterzustände, nicht einer (`panelTab`, `dockTab`). Sonst nähme „Manage" in einer
+Dock-Zeile die Zeile, auf die geklickt wurde, unter dem Zeiger weg.
+
+### R ist die Einheit, Geld ist die Anzeige
+
+Ein Trade wird in R gedacht und in Geld abgerechnet. „+412 $" sagt nichts, solange man nicht
+weiß, was dafür riskiert wurde; „+1,4 R" ist auf jedem Symbol und in jeder Größe dieselbe
+Aussage. Also steht beides da, und Geld ist das, was immer da ist.
+
+**Der Maßstab steht fest, sobald er einmal steht.** `position.riskPerUnit` hält, was eine
+Einheit riskierte, als die Position das erste Mal überhaupt einen Stop hatte — einmal gesetzt,
+nie wieder bewegt, auch nicht vom Trail und schon gar nicht von Break-even. Gegen den
+*aktuellen* Stop zu rechnen ist der naheliegende Fehler, und er macht R genau dann unbrauchbar,
+wenn jemand es benutzt: Nach einem Break-even ist der Nenner fast null, und ein Trade, der
+vierzig Cent vorn liegt, liest sich als +23 R. Der Smoke-Test durch einen kompletten Nachmittag
+hat genau das ausgespuckt, bevor es jemand im Chart gesehen hätte.
+
+Daneben steht das *offene Risiko* — was der Stop, der jetzt im Markt liegt, kosten würde. Das
+ist eine andere Zahl, sie ändert sich bei jeder Stop-Bewegung, und eine auf Break-even gezogene
+Position hat davon ehrlich fast keins. Beide sind da, weil beide gebraucht werden; verwechselt
+werden dürfen sie nicht.
+
+Gerechnet wird aus rohen Preisabständen, ohne die Gebühr für den Ausstieg. Die mitzurechnen wäre
+genauer und weniger brauchbar: 1 R wäre dann für jede Position eine leicht andere Zahl.
+
+Ohne Stop ist R `null`, nie `0`. Eine Position ohne Stop riskiert nicht wenig, sie
+riskiert einen Betrag, den niemand entschieden hat — das als Null zu führen ist der eine
+Rechenfehler hier, der sich wie eine Beruhigung liest. Deshalb summiert `exposure.risk` nur die
+Positionen mit Stop, und `exposure.unprotected` **zählt** die anderen daneben; im Dock steht
+„+1 unprotected" neben der Summe, und der Manager sagt es als Warnung.
+
+Wo R sonst noch auftaucht: Ziel auf 1R/2R/3R per Klick (die Arithmetik gegen einen Einstieg mit
+acht Nachkommastellen im Kopf zu machen, während der Trade läuft, ist die Stelle, an der sie
+schiefgeht), der Trail-Abstand als „R"-Knopf, und die Historie führt je Trade sein Ergebnis in R
+— gerechnet gegen dasselbe `riskPerUnit`, das der abgeschlossene Trade mitträgt. Läufe, die vor
+dieser Änderung gespeichert wurden, haben es nicht und fallen auf den Schluss-Stop zurück: für
+einen unangetasteten Trade der richtige Nenner, für einen gemanagten der falsche, und in jedem
+Fall besser als eine Spalte voller Striche.
+
+### Was der Chart von einer Sitzung zeigt
+
+Abgeschlossene Trades waren bewusst abwesend, und das Argument war gut: Die Bars, auf denen sie
+passiert sind, sind das Protokoll schon, und die ganze Historie über die Kerzen zu malen macht
+aus dem, was gelesen wird, eine Anzeigetafel.
+
+Für das eine, wozu ein Replay da ist, ist es trotzdem die falsche Vorgabe. Einen Nachmittag
+durchzusehen heißt zu sehen, wo die Einstiege lagen und was der Markt danach tat, und das aus
+einer Liste von Zeitstempeln zu rekonstruieren ist genau die Arbeit, die der Chart abnehmen
+soll. Also werden sie gezeichnet — eine Linie vom Einstieg zum Ausstieg in der Farbe des
+Ergebnisses, unter allem Lebendigen, mit einem Dreieck an der Richtung und einem Punkt am
+Ausgang. Und abschaltbar, damit das Argument für den sauberen Chart verfügbar bleibt.
+
+Kein Block: Ein Block sagt „das ist der Plan", und ein Trade, der vorbei ist, hatte ein
+Ergebnis und keine Spanne.
+
+**Wartende Orders sind anfassbar.** Eine ruhende Order war eine Linie, die man ansehen und
+nicht anrühren konnte: Verschieben hieß im Panel stornieren und eine neue platzieren — andere
+Id, anderer Platz im Buch, und dazwischen ein Moment ohne irgendetwas im Markt. Der Broker kann
+seit jeher ändern statt ersetzen (`modifyOrder`, seit dem Tag getestet); diese Seite hat ihn nur
+nie danach gefragt. Jetzt zieht man die Linie, und beim Loslassen wird die Order geändert.
+Welche Orders überhaupt eine eigene Linie bekommen, steht in `draggableOrders` — dieselbe
+Funktion, die das Primitive zum Zeichnen benutzt, damit gemalte und greifbare Menge nicht
+auseinanderlaufen können. Die Klammer einer offenen Position ist nicht dabei: Ihr Block zeichnet
+beide Level schon, und zwei Wege, dasselbe Niveau zu bewegen, sind einer zu viel.
+
+Zwei Abweisungen beim Fallenlassen (`orderRefusal`), beide sonst lautlos: Eine Limit-Order über
+dem Markt (bzw. Stop darunter) ist bereits auslösbar — sie füllt auf der nächsten Bar, komme,
+was wolle, und ist damit eine Market-Order, die nicht so aussieht. Und ein ruhender Einstieg,
+der über seinen eigenen Stop hinweggezogen wird, eröffnet und schließt auf derselben Bar.
+
+Das × zum Stornieren erscheint nur, solange der Zeiger auf der Linie ist. Ein dauerhaft
+sichtbarer Knopf, der eine Order zerstört, läge ständig auf einem Chart, über den Leute beim
+Lesen die Maus schieben.
+
+**Ein Trade in der Historie ist anklickbar.** Der Klick rückt die *Ansicht* auf ihn — nie den
+Abspielkopf. Am Konto ändert sich nichts, die aufgedeckten Bars bleiben die aufgedeckten, und
+Zurückscrollen ist genauso harmlos wie Zurückscrollen mit der Maus. Der gezeigte Trade wird
+kräftiger gezeichnet und trägt sein Ergebnis auf einer Plakette — und er wird gezeichnet, *auch
+wenn* abgeschlossene Trades ausgeschaltet sind: nach einem bestimmten Trade zu fragen ist eine
+andere Bitte als nach allen, und die Pauschaleinstellung darf sie nicht abweisen.
+
+### Die Tastatur
+
+Leertaste und Pfeil rechts waren schon da, weil die Hände auf dem Chart liegen und nicht auf
+den Knöpfen. Dazu kommen Umschalt+Pfeil (vorspulen), **B**/**S** (Kauf/Verkauf zu Markt),
+**H** (halbe Position), **C** (Position schließen), **Umschalt+C** (alles schließen),
+**E** (Stop auf Break-even) und **Umschalt+R** (Position umdrehen).
+
+Drei Regeln halten das benutzbar statt gefährlich: Nichts davon feuert, während in ein Feld
+getippt wird — sonst startete die Notiz im Ticket das Replay und ihr erster Buchstabe schickte
+eine Order. Alles hat auch einen Knopf; eine Abkürzung, die der einzige Weg zu etwas ist, ist
+eine Funktion, die niemand findet. Und B/S schicken die Größe der Schnellleiste und sonst
+nichts — steht dort keine, tun sie nichts, aus demselben Grund, aus dem dieses Feld nie einen
+Vorgabewert bekommt. Umdrehen liegt hinter Umschalt, wie Alles-Schließen und anders als der
+Rest: Die Einzeltasten sind die, die man durch einen Blick auf den Chart zurücknehmen kann, und
+ein Reverse sind zwei Entscheidungen auf einmal.
 ## 9. Bot-API (geplant, Abschnitt 11 M3)
 
 Strategien sind JavaScript-Module, kein DSL:
@@ -1578,23 +1933,61 @@ Teilen von Strategien dazukommt.
 
 ## 10. Design-System
 
-Übernimmt die „Living Data"-Sprache der Katsumii-App, verbindlich in `src/styles/tokens.css`
-und `base.css`. Zwei begründete Abweichungen:
+Die Sprache heißt **„Stille Karten"** und ist der ruhige Nachfahre der „Living Data"-Sprache
+der Katsumii-App; verbindlich in `src/styles/tokens.css` und `base.css`. Drei Regeln tragen sie:
 
-- **Akzent ist Midori-Grün** (`#059669` hell / `#34d399` dunkel). Weil der Akzent grün ist,
+- **Fläche statt Kante.** Ein Rahmen zieht eine Linie, die das Auge lesen muss, bevor es den
+  Inhalt liest. `--brd` ist deshalb transparent, und `--glass` — eine Fläche wenige Prozent
+  neben dem Grund — trennt. Weil die Füllung halbtransparent ist, stapelt sie sich: ein Feld
+  auf einer Karte hebt sich weiter von der Karte ab. Eine Ausnahme bleibt: das Farbfeld
+  (`.swatch`), das ohne Kante im hellen Panel verschwände.
+- **Weite Radien, ein tiefer Schatten.** 22 für Panels, 16 für Karten, 11 für Bedienelemente.
+  Der Schatten ist das Einzige, was ein Panel vom Grund abhebt, also weich und weit.
+- **Sektionsnamen in der Schrift der Wortmarke.** `.k-eyebrow` setzt in Inter Tight 700 auf
+  Lesegröße in gemischter Schreibung — ein Titel, kein Maschinenetikett. Mono bleibt, wo sie
+  hingehört: auf Daten und dem Kleingedruckten daneben. Ganze Sätze bekommen `.k-prose`,
+  nie Mono-Versalien.
+
+Schrift steht in vier Tokens (`--font-ui` / `--font-title` / `--font-num` / `--font-mono`)
+und kommt aus zwei Familien: Inter Tight trägt Oberfläche, Titel und Zahlen, DM Mono die
+Labels. Außerhalb von `tokens.css` nennt nichts eine Schriftfamilie beim Namen, ein Wechsel
+ist also eine Zeile.
+
+Dazu zwei begründete Abweichungen von Katsumii:
+
+- **Akzent ist Midorii-Grün** (`#059669` hell / `#34d399` dunkel). Weil der Akzent grün ist,
   bekommt Gewinn kein zweites Grün: `--pos` **ist** der Akzent. Verlust behält den einzigen
   roten Alarmton.
 - **Kerzen sind blau/weiß, nie grün/rot.** Das hält Grün vollständig für Interaktion frei
   und bleibt für Rot-Grün-Sehschwäche lesbar. Aufwärts ist hell, abwärts blau; im hellen
   Modus wird „hell" zur hohlen Kerze mit Ink-Kontur, weil Weiß auf weißem Chart verschwindet.
 
-Der Chart ist die eine Fläche, auf der die Gradient-Panels **nicht** gelten: Kursverlauf ist
-die Figur, der Untergrund bleibt flach und ruhig. Chart-Farben stehen als eigene Tokens
+Der Chart ist die eine Fläche, auf der die Panelsprache **nicht** gilt: Kursverlauf ist
+die Figur, der Untergrund bleibt flach und behält seine Kante (`--chart-brd`). Chart-Farben stehen als eigene Tokens
 (`--candle-*`, `--chart-*`) und werden in `ChartPanel.vue` per `getComputedStyle` gelesen,
 damit ein Theme-Wechsel keine zweite Farbliste pflegen muss.
 
-Klassen `k-panel`, `k-eyebrow`, `k-mono-label`, `k-chip`, `k-note`, `.btn`, `.primary-btn`,
-`.icon-btn` — vor jeder neuen Klasse prüfen, ob eine davon passt.
+Klassen `k-panel`, `k-eyebrow`, `k-mono-label`, `k-prose`, `k-chip`, `k-note`, `.btn`,
+`.primary-btn`, `.icon-btn` — vor jeder neuen Klasse prüfen, ob eine davon passt.
+
+### Die Seitenpanele klappen weg
+
+Links wird eingerichtet — ein Download, eine Replay-Sitzung —, rechts steht, was auf dem Chart
+liegt. Beides wird beim Lesen eines Charts seltener gebraucht als der Chart selbst, also lässt
+sich jede Seite wegklappen (`session.panels`, gemerkt in `localStorage` wie das Theme).
+
+Der Griff dafür (`PanelToggle.vue`) ist ein schmaler Streifen in der Lücke zwischen Panel und
+Chart, **nicht** ein Knopf im Panel. Ein Knopf im Panel kann es nur schließen; was es wieder
+öffnet, müsste woanders wohnen — zwei Bedienelemente für einen Zustand, an zwei Stellen, von
+denen eine nur manchmal da ist. So ist es eines, immer an derselben Stelle, und der Winkel zeigt,
+wohin das Panel als Nächstes geht.
+
+Sichtbar wird der Streifen erst unter dem Zeiger; ist das Panel weg, bleibt er gedimmt stehen,
+sonst wäre der einzige Hinweis auf das Eingeklappte eine Lücke am Fensterrand.
+
+Ausgeblendet wird per `v-show`, nicht `v-if`: Ein halb ausgefülltes Download-Formular muss das
+Wegklappen überleben. Für den Chart gilt weiter `v-if` — der verträgt keinen nullbreiten
+Container, aber das ist eine andere Frage und steht in `App.vue`.
 
 ### Bestätigung vor dem Löschen
 
@@ -1632,8 +2025,8 @@ Tooltip darin würde exakt an der Kante abgeschnitten, an der es erscheinen muss
 Panel klebt am Fensterrand. Die eine Fläche liegt `position: fixed` in Viewport-Koordinaten
 und wählt die Seite mit mehr Platz, überlebt also auch ein schmales Fenster.
 
-Gestaltet als kleineres Geschwister von `.k-panel`: derselbe Gradient, dieselbe 1px-Linie,
-derselbe Schatten, eine Radius-Stufe kleiner. Kein Blur — die Sprache benutzt Gradient-
+Gestaltet als kleineres Geschwister von `.k-panel`: dieselbe Fläche, derselbe Schatten,
+eine Radius-Stufe kleiner, ebenfalls ohne Kante. Kein Blur — die Sprache benutzt 
 Flächen, und über dem Chart würde Blur den Kursverlauf verschmieren. Der Kopf ist ein
 `k-mono-label` in Akzentfarbe: dieselbe Rolle wie das Eyebrow einer Sektion, nur kleiner.
 
@@ -1675,6 +2068,11 @@ Fenstererzeugung und IPC-Handler sie teilen können, ohne einander zu importiere
 - **M2 — Replay** ✅ Abspielkopf, Bar-für-Bar-Vorlauf (Leertaste, Pfeil rechts, 1–30 Bars/s),
   Ticket mit Market-, Limit- und Stop-Einstieg, risikobasierte Größe, Stop und Ziel per Klick vom
   Chart, Konto- und Positionsanzeige, Speichern als Lauf — auf derselben Engine (Abschnitt 8d).
+- **M2.5 — Eine Sitzung wie eine echte** ✅ Timeframe-Wechsel unter der laufenden Sitzung über
+  die Uhr statt über Indizes, mehrere Positionen nebeneinander (Hedging), Teilschließung,
+  Break-even, Trailing Stop, Orders ändern statt neu setzen, Vorspulen und Sprung auf ein
+  Datum (jede Bar durch die Engine), abgeschlossene Trades auf dem Chart, Handels-Hotkeys und
+  Sitzungen, die hingelegt und wieder aufgenommen werden (Abschnitt 8d).
 - **M3 — Bots.** Monaco-Editor, Worker-Ausführung, `midori.d.ts`, Kennzahlen (P&L, Drawdown,
   Sharpe, Trefferquote, Erwartungswert).
 - **M4 — Analyse.** Equity-Kurve ✅, Trade-Liste mit Sprung zum Entry ✅, Vergleich mehrerer

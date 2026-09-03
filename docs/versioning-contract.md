@@ -1,7 +1,7 @@
 # Versionsvertrag
 
 Stand: 30. August 2026. Übernommen aus dem Versionsvertrag der Katsumii-App und auf
-Midoris Aufbau zugeschnitten (kein Python-Backend, dafür ein Changelog-Gate).
+Midoriis Aufbau zugeschnitten (kein Python-Backend, dafür ein Changelog-Gate).
 
 ## Kanonische Quelle
 

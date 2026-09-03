@@ -39,6 +39,15 @@ contextBridge.exposeInMainWorld('midori', {
      * comes here — it is played out in the renderer against the same engine a
      * backtest uses; only the result crosses. */
     save: (request) => ipcRenderer.invoke('replay:save', request),
+
+    /* A session that is not finished yet: the account and the clock, without
+     * the bars. Picking one up leaves it where it is and saving again replaces
+     * it, so closing the app without saving costs the sitting, not the
+     * session. */
+    saveSession: (request) => ipcRenderer.invoke('replay:saveSession', request),
+    sessions: () => ipcRenderer.invoke('replay:sessions'),
+    loadSession: (id) => ipcRenderer.invoke('replay:loadSession', id),
+    deleteSession: (id) => ipcRenderer.invoke('replay:deleteSession', id),
   },
 
   sweep: {

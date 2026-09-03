@@ -7,7 +7,7 @@ description: Changelog updaten, Version bumpen, offene Änderungen committen und
 
 Führt den wiederkehrenden Release-Schritt aus. Nur auf explizite Aufforderung des Users ausführen — niemals proaktiv.
 
-Übernommen aus dem `ship`-Skill der Katsumii-App und auf Midori zugeschnitten: kein Backend, kein Python, Tests laufen über `npm test`.
+Übernommen aus dem `ship`-Skill der Katsumii-App und auf Midorii zugeschnitten: kein Backend, kein Python, Tests laufen über `npm test`.
 
 ## Versionsquellen
 

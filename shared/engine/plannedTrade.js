@@ -20,11 +20,11 @@
  *
  * Distances are carried, not computed here
  * ----------------------------------------
- * A market order fills on the next bar, at that bar's open plus spread and
- * slippage, which is not knowable when the order is sent. So the bracket goes
- * to the Broker as offsets and is turned into levels at the fill — see
- * `_attachBracket`. Computing the levels here from the last close would make a
- * plan drawn as "risk 500" cost whatever the gap happened to be.
+ * A market order fills at the last price plus spread and slippage, and what
+ * those come to is the account's business, not this file's. So the bracket
+ * goes to the Broker as offsets and is turned into levels at the fill — see
+ * `_attachBracket`. Levels computed here from the bare close would quietly
+ * make a plan drawn as "risk 500" cost 500 plus the costs of getting in.
  *
  * Stricter than the drawing
  * -------------------------
@@ -119,10 +119,11 @@ export function orderFromPlan(plan, { price, mode }) {
 /**
  * The entry a size can be worked out from before the order exists.
  *
- * A resting order knows where it will fill. A market order does not — it fills
- * on the next bar — so the last close stands in, which is right for the one
- * thing sizing needs it for: the distance to the stop is carried as a number
- * and is exact either way, and the estimate only reaches the leverage ceiling.
+ * A resting order knows where it will fill. A market order fills at the last
+ * price plus costs, so the last close stands in for it — a hair off, and right
+ * for the one thing sizing needs it for: the distance to the stop is carried
+ * as a number and is exact either way, and the estimate only reaches the
+ * leverage ceiling.
  */
 export function sizingEntry(spec, price) {
   return spec.type === 'market' ? price : spec.price;

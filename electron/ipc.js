@@ -14,8 +14,11 @@ import {
 import { computeVolumeProfile } from '../shared/indicators/volumeProfile.js';
 import { loadDrawings, saveDrawings } from './data/store/drawingStore.js';
 import {
-  annotateRun, deleteRun, listRuns, loadRun, saveRun,
+  annotateRun, condenseEquity, deleteRun, listRuns, loadRun, saveRun,
 } from './data/store/runStore.js';
+import {
+  deleteSession, listSessions, loadSession, saveSession,
+} from './data/store/sessionStore.js';
 import { runBacktest } from './engine/backtest.js';
 import { isSweepRunning, startSweep, stopSweep } from './engine/sweepManager.js';
 import { countCombinations } from '../shared/analysis/sweep.js';
@@ -35,6 +38,17 @@ export function drawingsDir() {
 /** Results outlive the data they were computed from, so they live apart too. */
 export function runsDir() {
   return path.join(app.getPath('userData'), 'backtests');
+}
+
+/**
+ * Sessions that are not finished yet.
+ *
+ * Apart from the runs on purpose: these are working state, they are removed
+ * when they are picked up again, and a library of results should not have
+ * half-played accounts sitting in it.
+ */
+export function sessionsDir() {
+  return path.join(app.getPath('userData'), 'replay-sessions');
 }
 
 
@@ -217,6 +231,52 @@ export function registerIpc() {
       note: typeof note === 'string' ? note.slice(0, 2000) : '',
     });
   });
+
+  /* A session that is not over yet is a different thing from a finished run,
+   * and goes somewhere else. What crosses the bridge is the account and the
+   * clock — never the bars, which are already in the data store and are the
+   * same bars tomorrow. See ReplaySession.snapshot.
+   */
+  ipcMain.handle('replay:saveSession', async (_e, request) => {
+    const { id = null, name = '', symbol, timeframe, session, stats = {} } = request ?? {};
+
+    requireString(symbol, 'symbol');
+    requireTimeframe(timeframe);
+    if (!session || session.version !== 1 || !session.broker) {
+      throw new Error('replay:saveSession: this is not a session snapshot');
+    }
+    if (!Number.isFinite(session.clock) || !Number.isFinite(session.startTime)) {
+      throw new Error('replay:saveSession: the session has no clock');
+    }
+
+    return saveSession(sessionsDir(), {
+      id,
+      name: typeof name === 'string' ? name.slice(0, 120) : '',
+      symbol,
+      timeframe,
+      startTime: session.startTime,
+      clock: session.clock,
+      stats,
+      session: {
+        ...session,
+        /* The same condensing a stored run gets, and for the same reason: the
+         * curve carries a point per bar, and the figures that need every point
+         * — the peak, the worst drawdown — were computed over the full curve
+         * before it got here and are stored beside it. */
+        equityCurve: condenseEquity(session.equityCurve ?? []),
+      },
+    });
+  });
+
+  ipcMain.handle('replay:sessions', () => listSessions(sessionsDir()));
+
+  ipcMain.handle('replay:loadSession', (_e, id) => (
+    loadSession(sessionsDir(), requireString(id, 'id'))
+  ));
+
+  ipcMain.handle('replay:deleteSession', (_e, id) => (
+    deleteSession(sessionsDir(), requireString(id, 'id'))
+  ));
 
   /* ─── Sweeps ────────────────────────────────────────────────────────── */
 

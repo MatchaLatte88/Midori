@@ -1,6 +1,56 @@
 {
   "releases": [
     {
+      "version": "v0.1.12-dev",
+      "date": "Sep 2026",
+      "changes": [
+        {
+          "type": "feat",
+          "text": "The timeframe now changes under a running session. Read the hourly, drop to the 5m to find the entry, go back up - the playhead stays at the same instant, nothing already played is played again, and where that moment falls inside a bar of the new timeframe the bar is drawn as far as it has got and finished by the next step. Locking it for the length of a session asked you either to trade blind or to start over"
+        },
+        {
+          "type": "feat",
+          "text": "Several positions can be open at once, including opposing ones. A second entry is a second idea - a runner beside a scalp - and averaging it into the first would hide whether either of them was right. Each carries its own entry, stop and result; one of them is the one being worked on, wears the handles on the chart, and a click on its line or its row makes it that one"
+        },
+        {
+          "type": "feat",
+          "text": "A position can now be managed rather than only held: a quarter, a half or three quarters off at market with the rest running on the same entry, a stop moved to where the trade actually comes out flat after costs, a trailing stop that follows the best price reached, a target set at 1R, 2R or 3R by button, and Reverse - out and into the same size the other way, both fills at the same price. A reversal is honestly two trades, so the old one is booked with the result it had and the new one starts without levels"
+        },
+        {
+          "type": "feat",
+          "text": "Positions, working orders and finished trades moved out of the side column into a dock under the chart, one line per position with the numbers in fixed columns. Two positions and a handful of trades used to mean scrolling before you could close anything. The account sits on the right of the tab row - equity, open result, and what every stop in the market would cost if it filled, with a position that has no stop counted separately instead of summed in as a zero"
+        },
+        {
+          "type": "feat",
+          "text": "Waiting orders are dragged on the chart like a position's levels. The order is amended rather than cancelled and replaced, so it keeps its id and its place in the book and there is never a moment with nothing in the market. Hovering the line brings up an × that takes it back. A drag that would make the order immediately triggerable, or pull it through its own stop, is refused and says why"
+        },
+        {
+          "type": "feat",
+          "text": "Skip ahead by a number of bars, or jump to a date. Every bar in between goes through the engine - what would have filled fills, and a position that would have been stopped out is - rather than the playhead simply being moved, which would hand back an account that survived moves it never survived. Forwards only, for the same reason"
+        },
+        {
+          "type": "feat",
+          "text": "A session can be put down without being lost. Pause for later stores the account, the open positions and the playhead; next time it is in the Carry on list and picks up on the same bar. The bars are not stored with it - they are already on disk and they are the same bars tomorrow"
+        },
+        {
+          "type": "feat",
+          "text": "Finished trades stay on the chart as a thin line from entry to exit in the colour of the result, and the history list is clickable: a click moves the chart to that trade and draws it highlighted with what it made. Only the view moves - the playhead and the account stay where they are. The Trades button in the bar clears them off again"
+        },
+        {
+          "type": "feat",
+          "text": "The keyboard does the usual things: space plays, right arrow steps a bar, shift and right skips ahead, B and S buy and sell at market in the quick bar's size, H takes half off, C closes the position, shift C closes everything, E moves the stop to break-even. None of it fires while you are typing in a field"
+        },
+        {
+          "type": "style",
+          "text": "A quieter surface throughout: panels separated by a fill a few percent off the ground rather than by a drawn edge, wider corners, one soft shadow doing the lifting, and section names set as titles at reading size instead of mono capitals. The interface is now in Inter Tight, and both side panels fold away with a handle in the gap - room made on the chart today is still there tomorrow"
+        },
+        {
+          "type": "style",
+          "text": "The app is called Midorii"
+        }
+      ]
+    },
+    {
       "version": "v0.1.11-dev",
       "date": "Sep 2026",
       "changes": [

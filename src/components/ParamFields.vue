@@ -113,16 +113,16 @@ function toggleMulti(param, value) {
   min-width: 0;
   padding: 5px 2px;
   font-size: 10.5px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--brd);
   border-radius: var(--radius-sm);
-  background: transparent;
+  background: var(--glass);
   color: var(--sec);
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.toggle:hover { border-color: var(--brd); color: var(--txt); }
+.toggle:hover { background: var(--glass-strong); color: var(--txt); }
 .toggle.is-active {
   border-color: var(--accent-brd);
   background: var(--accent-bg);
@@ -134,7 +134,7 @@ function toggleMulti(param, value) {
   width: 12px;
   height: 12px;
   border-radius: 3px;
-  border: 1px solid var(--brd);
+  border: 1px solid var(--line);
   padding: 0;
   cursor: pointer;
 }

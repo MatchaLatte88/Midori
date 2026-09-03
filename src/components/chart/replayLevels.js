@@ -160,3 +160,125 @@ export function levelRefusal(field, price, position, lastPrice) {
   }
   return null;
 }
+
+/* ─── The orders that are still waiting ─────────────────────────────────────
+ *
+ * A resting order is a line on the chart at the price it is waiting for, and
+ * until now that line could only be looked at. Moving the order meant
+ * cancelling it in the panel and placing another one — which is a different id,
+ * a different place in the book, and a moment with nothing in the market. The
+ * Broker has been able to amend an order in place all along (`modifyOrder`);
+ * nothing on this side ever asked it to.
+ *
+ * So the line is draggable, and it drags the order rather than replacing it.
+ */
+
+/** Where a resting order is waiting, whichever kind of price it waits on. */
+export function orderPrice(order) {
+  return order.type === 'limit' ? order.limitPrice : order.stopPrice;
+}
+
+/**
+ * The resting orders that get a line of their own, and can therefore be taken
+ * hold of.
+ *
+ * An open position's stop and target are already on the chart — its block
+ * draws both, and the block is what a drag takes hold of. Drawing the order as
+ * well would put a second line on exactly the same price and leave two ways of
+ * moving one level. A leg whose position is gone is still drawn, because then
+ * nothing else is showing it.
+ *
+ * The primitive draws exactly this list, so what is painted and what can be
+ * grabbed cannot drift apart.
+ */
+export function draggableOrders(orders, positions) {
+  return orders.filter((order) => {
+    if (orderPrice(order) == null) return false;
+    const bracket = order.tag === 'stop-loss' || order.tag === 'take-profit';
+    return !(bracket && positions.some((p) => p.id === order.positionId));
+  });
+}
+
+/** The button that cancels one, against the right edge on its own line. */
+export const ORDER_BUTTON = 18;
+
+export function orderCancelRect(paneWidth, y) {
+  return {
+    x: paneWidth - ORDER_BUTTON - CLOSE_INSET,
+    y: y - ORDER_BUTTON / 2,
+    width: ORDER_BUTTON,
+    height: ORDER_BUTTON,
+  };
+}
+
+/**
+ * Which resting order a pointer has hold of, or null.
+ *
+ * The same shape as `levelAt` and deliberately not the same function: that one
+ * answers with a field name and this one with an order id, and a single
+ * function returning "whichever of those two kinds of thing" is how a stop
+ * ends up being cancelled because a number matched a string.
+ *
+ * @param {{x:number, y:number}} point
+ * @param {{left:number, right:number}} extent
+ * @param {Array<{id:number, y:number}>} rows
+ */
+export function orderAt(point, extent, rows, tolerance = GRAB_TOLERANCE) {
+  if (point.x < extent.left || point.x > extent.right) return null;
+
+  let best = null;
+  for (const row of rows) {
+    const distance = Math.abs(row.y - point.y);
+    if (distance > tolerance) continue;
+    if (best === null || distance < best.distance) best = { id: row.id, distance };
+  }
+  return best === null ? null : best.id;
+}
+
+/**
+ * Why a resting order may not be moved to a price, or null when it may.
+ *
+ * Two things can go wrong, and both of them are silent if they are allowed.
+ *
+ * A resting entry that is dragged past its own stop or target has become an
+ * order that opens a trade and closes it again on the same bar: the bracket
+ * goes into the market the moment the entry fills, on the wrong side of the
+ * price it filled at, and takes the position straight back out. That is not a
+ * plan anybody dragged towards.
+ *
+ * And a stop entry below the market, or a limit entry above it, is an order
+ * that is already triggered — it fills on the next bar's open whatever happens,
+ * which makes it a market order that does not look like one. The order type is
+ * the decision; if what is wanted is in at market, that is a different button.
+ */
+export function orderRefusal(order, price, lastPrice) {
+  if (!Number.isFinite(price)) return 'That is not a price this order can wait at.';
+
+  const buy = order.side === 'buy';
+
+  if (Number.isFinite(lastPrice)) {
+    if (order.type === 'limit' && (buy ? price > lastPrice : price < lastPrice)) {
+      return `A ${buy ? 'buy' : 'sell'} limit ${buy ? 'above' : 'below'} the last price is `
+        + 'already marketable — it would fill on the next bar whatever happens.';
+    }
+    if (order.type === 'stop' && (buy ? price < lastPrice : price > lastPrice)) {
+      return `A ${buy ? 'buy' : 'sell'} stop ${buy ? 'below' : 'above'} the last price is `
+        + 'already triggered — it would fill on the next bar whatever happens.';
+    }
+  }
+
+  const bracket = order.bracket;
+  if (bracket) {
+    const { stopLoss, takeProfit } = bracket;
+    if (stopLoss != null && (buy ? price <= stopLoss : price >= stopLoss)) {
+      return 'That would put the entry on the far side of its own stop, so the trade '
+        + 'would open and close on the same bar.';
+    }
+    if (takeProfit != null && (buy ? price >= takeProfit : price <= takeProfit)) {
+      return 'That would put the entry past its own target, so the trade would open and '
+        + 'close on the same bar.';
+    }
+  }
+
+  return null;
+}

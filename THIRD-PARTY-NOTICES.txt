@@ -1,10 +1,10 @@
-Third-party notices for Midori
+Third-party notices for Midorii
 ==============================
 
-Midori bundles the components listed below. Full licence texts are shipped with
+Midorii bundles the components listed below. Full licence texts are shipped with
 each package inside node_modules/ and are linked here by their canonical URL.
 
-Midori does not distribute market data. All price data is downloaded by the
+Midorii does not distribute market data. All price data is downloaded by the
 user, on their own machine, from sources they choose, and remains subject to
 those sources' own terms.
 
@@ -28,12 +28,12 @@ Lightweight Charts™ — TradingView, Inc.
     See the License for the specific language governing permissions and
     limitations under the License.
 
-    Charts in Midori display the TradingView attribution logo, as the licence
+    Charts in Midorii display the TradingView attribution logo, as the licence
     requires. The `attributionLogo` option is deliberately left enabled.
 
-    Note: Midori uses Lightweight Charts, which is open source under Apache 2.0.
+    Note: Midorii uses Lightweight Charts, which is open source under Apache 2.0.
     It does not use, and is not derived from, the TradingView Charting Library,
-    which carries a separate licence. The drawing tools in Midori are its own
+    which carries a separate licence. The drawing tools in Midorii are its own
     implementation.
 
 
@@ -70,23 +70,23 @@ fflate — Arjun Barrett
 
 Fonts
 -----
-All fonts are self-hosted; Midori makes no external font requests.
+All fonts are self-hosted; Midorii makes no external font requests.
 
-    Inter — Rasmus Andersson
+    Inter Tight — Rasmus Andersson
     SIL Open Font License 1.1
-    https://github.com/rsms/inter/blob/master/LICENSE.txt
-
-    Plus Jakarta Sans — Tokotype
-    SIL Open Font License 1.1
-    https://github.com/tokotype/PlusJakartaSans/blob/master/OFL.txt
+    https://github.com/google/fonts/blob/main/ofl/intertight/OFL.txt
 
     DM Mono — Colophon Foundry, Jonathan Pinhorn
     SIL Open Font License 1.1
     https://github.com/googlefonts/dm-mono/blob/main/OFL.txt
 
+Inter and Plus Jakarta Sans were used until the move to the "Stille Karten"
+design language. Their files are still in src/assets/fonts/ but no @font-face
+rule references them, so they are not part of a build.
+
 
 Data sources
 ------------
 Binance publishes historical market data at https://data.binance.vision under
-its own terms. Midori downloads from it at the user's request and does not
+its own terms. Midorii downloads from it at the user's request and does not
 redistribute it.

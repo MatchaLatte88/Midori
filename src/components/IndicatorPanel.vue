@@ -286,12 +286,12 @@ function fmtCount(n) {
           @click="add(spec)"
         >
           <span class="catalog-name">{{ spec.name }}</span>
-          <span class="k-mono-meta">{{ spec.description }}</span>
+          <span class="k-prose">{{ spec.description }}</span>
         </button>
       </li>
     </ul>
 
-    <p v-if="!session.indicators.length" class="k-mono-meta">No indicators on the chart.</p>
+    <p v-if="!session.indicators.length" class="k-prose">No indicators on the chart.</p>
 
     <div v-for="ind in session.indicators" :key="ind.uid" class="indicator">
       <div class="indicator-head">
@@ -447,9 +447,9 @@ function fmtCount(n) {
 .side-panel {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 16px;
-  width: 268px;
+  gap: 12px;
+  padding: 18px;
+  width: 280px;
   flex-shrink: 0;
   overflow-y: auto;
 }
@@ -547,9 +547,10 @@ function fmtCount(n) {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 9px 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  padding: 14px 15px;
+  border: 1px solid var(--brd);
+  background: var(--glass);
+  border-radius: var(--radius-md);
 }
 .indicator-head { display: flex; align-items: center; gap: 7px; }
 .indicator-name { flex: 1; font-weight: 600; font-size: 12px; }
@@ -562,7 +563,7 @@ function fmtCount(n) {
   width: 12px;
   height: 12px;
   border-radius: 3px;
-  border: 1px solid var(--brd);
+  border: 1px solid var(--line);
   padding: 0;
   cursor: pointer;
 }
@@ -577,16 +578,16 @@ function fmtCount(n) {
   padding: 5px 2px;
   font-size: 10.5px;
   letter-spacing: 0.01em;
-  border: 1px solid var(--line);
+  border: 1px solid var(--brd);
   border-radius: var(--radius-sm);
-  background: transparent;
+  background: var(--glass);
   color: var(--sec);
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.toggle:hover { border-color: var(--brd); color: var(--txt); }
+.toggle:hover { background: var(--glass-strong); color: var(--txt); }
 .toggle.is-active {
   border-color: var(--accent-brd);
   background: var(--accent-bg);
@@ -600,9 +601,10 @@ function fmtCount(n) {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 4px;
-  padding: 7px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  padding: 12px;
+  border: 1px solid var(--brd);
+  background: var(--glass);
+  border-radius: var(--radius-md);
 }
 .session-name { grid-column: 1; width: auto; }
 .session-zone { grid-column: 1 / -1; width: auto; }

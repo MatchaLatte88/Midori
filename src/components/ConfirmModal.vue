@@ -102,7 +102,7 @@ function onKey(event) {
 
 .title {
   margin: 2px 0 0;
-  font-family: 'Plus Jakarta Sans', Inter, sans-serif;
+  font-family: var(--font-num);
   font-weight: 700;
   font-size: 15px;
   letter-spacing: -0.01em;

@@ -38,7 +38,7 @@ function isLatest(release) {
         <header class="head">
           <div>
             <div class="k-eyebrow">Release notes</div>
-            <div class="title">Midori {{ APP_VERSION }}</div>
+            <div class="title">Midorii {{ APP_VERSION }}</div>
           </div>
           <button class="icon-btn" title="Close" @click="emit('close')">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
@@ -97,7 +97,7 @@ function isLatest(release) {
   border-bottom: 1px solid var(--line);
 }
 .title {
-  font-family: 'Plus Jakarta Sans', Inter, sans-serif;
+  font-family: var(--font-num);
   font-weight: 700;
   font-size: 16px;
   margin-top: 3px;
@@ -124,7 +124,7 @@ function isLatest(release) {
   margin-bottom: 8px;
 }
 .version {
-  font-family: 'DM Mono', ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 500;
 }
@@ -144,9 +144,10 @@ function isLatest(release) {
   flex-shrink: 0;
   width: 54px;
   padding: 2px 0;
-  border-radius: 4px;
+  border-radius: var(--radius-pill);
   border: 1px solid var(--brd);
-  font-family: 'DM Mono', ui-monospace, monospace;
+  background: var(--glass);
+  font-family: var(--font-mono);
   font-size: 9px;
   letter-spacing: 0.06em;
   text-transform: uppercase;

@@ -459,7 +459,7 @@ export const ZONE_PALETTE = [
   { value: 'candle-down-body', label: 'Down tone' },
   { value: 'pos', label: 'Green' },
   { value: 'neg', label: 'Red' },
-  { value: 'accent', label: 'Midori' },
+  { value: 'accent', label: 'Midorii' },
   { value: 'ind-1', label: 'Amber' },
   { value: 'ind-2', label: 'Violet' },
   { value: 'ind-3', label: 'Pink' },

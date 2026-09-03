@@ -133,9 +133,9 @@ const tools = computed(() => TOOLS);
   padding: 6px 4px;
   width: 38px;
   flex-shrink: 0;
-  border: 1px solid var(--line);
+  border: 1px solid var(--brd);
   border-radius: var(--radius-md);
-  background: linear-gradient(160deg, var(--panel-a), var(--panel-b));
+  background: var(--panel-bg);
   box-shadow: var(--panel-shadow);
 }
 
@@ -176,7 +176,7 @@ const tools = computed(() => TOOLS);
   width: 12px;
   height: 12px;
   border-radius: 3px;
-  border: 1px solid var(--brd);
+  border: 1px solid var(--line);
   cursor: pointer;
   padding: 0;
 }

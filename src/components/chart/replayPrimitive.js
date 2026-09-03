@@ -1,28 +1,38 @@
 /* What a running replay looks like on the chart.
  *
- * Four things, and nothing that has already finished:
+ * Four things:
  *
- *   the position   the open one, as the same risk/reward block the position
+ *   the positions  every open one, as the same risk/reward block the position
  *                  tool and tradePrimitive draw. It runs from the bar it was
  *                  opened on to the right edge of the pane, because it has not
  *                  ended — a block that stopped at the playhead would read as
  *                  a trade that closed there. Against that right edge sit the
  *                  three numbers that are still live: what the position is
  *                  worth now, what the stop costs, what the target pays.
- *   what is coming a market order that has been sent but has not filled. It is
- *                  drawn from the playhead forwards at the last close, dashed,
- *                  because that is exactly what it is — an intention about the
- *                  next bar. See `_announced`.
+ *
+ *                  A market order is one of these the moment it is sent: it
+ *                  fills at the last price rather than waiting for a bar, so
+ *                  there is never an entry on the way to draw.
+ *
+ *                  With several open, one of them is the one being worked on —
+ *                  it is drawn at full strength and carries the handles, the
+ *                  close button and the labels on the axis. The others are
+ *                  drawn dimmed, with their own result on their own entry
+ *                  line, because they are also real money.
  *   resting orders a dashed line at each pending order's price, from the
  *                  playhead rightwards. They are things that have not happened
  *                  yet, so they are drawn only into the future.
+ *   closed trades  a faint line from entry to exit, in the colour of the
+ *                  result, underneath everything live. The argument against
+ *                  drawing them was that the bars they happened on are the
+ *                  record already — but reviewing an afternoon means seeing
+ *                  where the entries went in against what the market did next,
+ *                  and reconstructing that from a list of timestamps is the
+ *                  work the chart is supposed to save. Switchable, so the
+ *                  argument for a clean chart is still available.
  *   the start      a faint vertical at the bar the session began on, so it
  *                  stays obvious how much of what is on screen was read before
  *                  anything was decided and how much was played through.
- *
- * Closed trades are deliberately absent. They are on the chart already, in the
- * only form that cannot mislead: the bars they happened on. Painting a session's
- * whole history over the candles turns the thing being read into a scoreboard.
  *
  * Colour follows the design language rather than the trading cliché. Green and
  * red mean profit and loss here and nothing else — they are the zones. A
@@ -41,7 +51,9 @@
  */
 
 import { formatPrice } from './drawings/drawingPrimitive.js';
-import { CLOSE_INSET, CLOSE_SIZE, closeButtonRect } from './replayLevels.js';
+import {
+  CLOSE_INSET, CLOSE_SIZE, closeButtonRect, draggableOrders, orderCancelRect, orderPrice,
+} from './replayLevels.js';
 
 /** Strongest at the level, fading to nothing at the entry — see `_position`. */
 const ZONE_ALPHA = 0.22;
@@ -49,6 +61,10 @@ const EDGE_ALPHA = 0.95;
 const ENTRY_ALPHA = 0.8;
 const ORDER_ALPHA = 0.8;
 const START_ALPHA = 0.35;
+/** A position that is open but not the one being worked on. */
+const INACTIVE_ALPHA = 0.5;
+/** A trade that is over: present, findable, not competing with the candles. */
+const TRADE_ALPHA = 0.45;
 /** A plate has to stay readable over candles without hiding them. */
 const PLATE_ALPHA = 0.82;
 
@@ -61,20 +77,10 @@ const PLATE_ALPHA = 0.82;
  * is moving, over candles, and Inter is simply easier to read at a glance than
  * a typewriter face. It is also the app's own text face, loaded as one variable
  * file, so every weight is there without a second request.
- *
- * The direction takes the display face the buttons use, at the one weight that
- * is certainly loaded — Canvas does not pull a face that no element on the page
- * has asked for, so a weight nothing else uses would quietly fall back.
  */
 const NUMBER_FONT = '500 12px Inter, system-ui, sans-serif';
-const CHIP_FONT = '600 12px "Plus Jakarta Sans", Inter, sans-serif';
-/** A little air between the letters of LONG and SHORT — it reads as a badge. */
-const CHIP_TRACKING = '0.6px';
 /** Tall enough for a 12px line to sit in without touching the edges. */
 const TAG_HEIGHT = 20;
-const CHIP_HEIGHT = 19;
-/** How far the label sits above its line — clear of it at the chip's height. */
-const LABEL_LIFT = 13;
 /** `--radius-sm`, the same corner the Buy and Sell buttons are cut with. */
 const CORNER = 8;
 /** Half the length of each stroke of the close button's cross. */
@@ -89,35 +95,12 @@ function fillRounded(ctx, x, y, width, height) {
   ctx.fill();
 }
 
-/* Setting a face and the tracking that belongs to it, together.
- *
- * Tracking is sticky on a canvas context: set for the chip and left alone, it
- * would space out every number drawn after it. So the two always travel as a
- * pair, and measureText sees exactly what fillText will draw. */
-function chipFont(ctx) {
-  ctx.font = CHIP_FONT;
-  ctx.letterSpacing = CHIP_TRACKING;
-}
-
+/* Tracking is sticky on a canvas context, so the face and the tracking that
+ * belongs to it are always set together — measureText then sees exactly what
+ * fillText will draw. */
 function numberFont(ctx) {
   ctx.font = NUMBER_FONT;
   ctx.letterSpacing = '0px';
-}
-
-/* How wide a chip and a plate come out, measured before either is drawn.
- *
- * Both are laid out against room that runs out — the block ends at the pane,
- * and an announced order has only the bars to the right of the playhead. What
- * does not fit has to be left out or moved, and that cannot be decided after
- * the ink is down. */
-function chipWidth(ctx, text) {
-  chipFont(ctx);
-  return ctx.measureText(text).width + 12;
-}
-
-function plateWidth(ctx, text) {
-  numberFont(ctx);
-  return ctx.measureText(text).width + 10;
 }
 
 /* What account money is written in.
@@ -154,6 +137,18 @@ function money(value) {
 }
 
 /**
+ * The same, with its sign in front of it — and nothing in front of a zero.
+ *
+ * Rounded to the cents `money` prints before the sign is decided, because a
+ * stop sitting exactly on break-even lands a fraction of a cent off zero and
+ * "−$0.00" written in red is the same wrong answer in miniature.
+ */
+function signedMoney(value) {
+  const cents = Math.round(value * 100) / 100;
+  return cents === 0 ? money(0) : `${cents > 0 ? '+' : '−'}${money(cents)}`;
+}
+
+/**
  * A position size, rounded to something a person reads rather than audits.
  *
  * formatPrice is wrong for this: it hands eight decimals to anything under 1,
@@ -182,23 +177,6 @@ function directionTone(long, colour) {
  */
 export function positionExtent(entryIndex, barSpacing, indexToX, paneWidth) {
   return { left: indexToX(entryIndex) - barSpacing / 2, right: paneWidth };
-}
-
-/**
- * The market orders that have been sent and have not filled yet.
- *
- * These are what `_announced` draws. A market order has no price of its own —
- * it takes whatever the next bar opens at — so until this existed there was
- * nothing on the chart between pressing Buy and the bar that answered it, and
- * the click looked like it had done nothing at all.
- *
- * Exits are not among them: a reduceOnly market order closes what is already
- * drawn, and announcing it as an arriving position would draw a second one
- * facing the other way. The position it is about is on the chart already.
- */
-export function announcedEntries(orders) {
-  if (!Array.isArray(orders)) return [];
-  return orders.filter((order) => order.type === 'market' && !order.reduceOnly);
 }
 
 /**
@@ -247,10 +225,25 @@ class ReplayRenderer {
 
       ctx.save();
       this._start(ctx, marks, indexToX, barSpacing, mediaSize, colour);
-      this._position(ctx, marks, bars, indexToX, barSpacing, mediaSize, colour);
+      /* Underneath everything live, because that is what it is: what has
+       * already been settled, behind what is still being decided. */
+      this._trades(ctx, marks, bars, indexToX, mediaSize, colour);
+
+      const positions = marks.positions ?? (marks.position ? [marks.position] : []);
+      /* The active one last, so it is drawn over the others: it is the one the
+       * handles belong to, and it should be the one under the pointer. */
+      const ordered = [
+        ...positions.filter((p) => p.id !== marks.activeId),
+        ...positions.filter((p) => p.id === marks.activeId),
+      ];
+      for (const position of ordered) {
+        this._position(
+          ctx, marks, bars, position, position.id === marks.activeId,
+          indexToX, barSpacing, mediaSize, colour,
+        );
+      }
+
       this._orders(ctx, marks, indexToX, barSpacing, mediaSize, colour);
-      // Last, so an order just sent is on top of everything it will change.
-      this._announced(ctx, marks, indexToX, barSpacing, mediaSize, colour);
       ctx.globalAlpha = 1;
       ctx.restore();
     });
@@ -272,8 +265,91 @@ class ReplayRenderer {
     ctx.setLineDash([]);
   }
 
-  _position(ctx, marks, bars, indexToX, barSpacing, mediaSize, colour) {
-    const position = marks.position;
+  /**
+   * Finished trades, as the shortest thing that says what happened.
+   *
+   * A line from where it went in to where it came out, in the colour of the
+   * result. Not a block: a block says "this is the plan", and a trade that is
+   * over had one outcome, not a range of them. Faint and underneath, because
+   * the candles are still the thing being read — the trades are there to be
+   * found when reviewing, not to compete with the market for attention.
+   */
+  /**
+   * Finished trades, and the one the history is pointing at.
+   *
+   * The list under the chart and the lines on it are the same trades, and a
+   * row that lit nothing up would leave the reader to match a timestamp
+   * against a chart by eye — which is the work this is supposed to save. So a
+   * pointed-at trade is drawn at full strength with what it made written on
+   * it, and it is drawn *whether or not* finished trades are switched on:
+   * asking for one particular trade is a different request from asking for all
+   * of them, and the blanket setting should not be able to refuse it.
+   */
+  _trades(ctx, marks, bars, indexToX, mediaSize, colour) {
+    const shown = marks.trades ?? [];
+    const all = marks.allTrades ?? shown;
+    const lit = new Set([marks.focusedTrade, marks.hoveredTrade].filter((n) => n != null));
+    if (shown.length === 0 && lit.size === 0) return;
+
+    const { series } = this._source;
+    const profit = colour('pos');
+    const loss = colour('neg');
+
+    const one = (trade, n) => {
+      const x1 = indexToX(barIndexAt(bars, trade.openedAt));
+      const x2 = indexToX(barIndexAt(bars, trade.closedAt));
+      if (x2 < 0 || x1 > mediaSize.width) return;
+
+      const y1 = series.priceToCoordinate(trade.entryPrice);
+      const y2 = series.priceToCoordinate(trade.exitPrice);
+      if (y1 == null || y2 == null) return;
+
+      const on = lit.has(n);
+      const alpha = on ? 1 : TRADE_ALPHA;
+      const tone = trade.netPnl >= 0 ? profit : loss;
+
+      ctx.lineWidth = on ? 2.5 : 1.5;
+      ctx.setLineDash([]);
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = tone;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+
+      /* Which way it was taken, at the end it was taken from. A dot at the
+       * exit closes the sentence — without it a run of these reads as a
+       * zigzag rather than as a series of trades. */
+      this._marker(ctx, x1, y1, trade.side === 'long', tone, alpha);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = tone;
+      ctx.beginPath();
+      ctx.arc(x2, y2, on ? 4 : 2.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (!on) return;
+
+      /* What it made, at the end it ended at. On a plate, because this lands
+       * over candles and a bare number on them is unreadable exactly when it
+       * is being looked for. */
+      numberFont(ctx);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      const text = `${trade.netPnl >= 0 ? '+' : '−'}${money(trade.netPnl)}`;
+      const width = ctx.measureText(text).width + 12;
+      ctx.globalAlpha = PLATE_ALPHA;
+      ctx.fillStyle = tone;
+      fillRounded(ctx, x2 + 7, y2 - TAG_HEIGHT / 2, width, TAG_HEIGHT);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = colour('chart-bg');
+      ctx.fillText(text, x2 + 13, y2);
+    };
+
+    if (shown.length > 0) shown.forEach(one);
+    else for (const n of lit) if (all[n]) one(all[n], n);
+  }
+
+  _position(ctx, marks, bars, position, active, indexToX, barSpacing, mediaSize, colour) {
     if (!position) return;
 
     const { series, drag } = this._source;
@@ -286,14 +362,19 @@ class ReplayRenderer {
 
     /* A level being dragged is drawn where the pointer is, not where the order
      * still rests: nothing moves in the account until the pointer is let go, so
-     * this is the only feedback the drag has. */
-    const stopLoss = drag?.field === 'stopLoss' ? drag.price : position.stopLoss;
-    const takeProfit = drag?.field === 'takeProfit' ? drag.price : position.takeProfit;
+     * this is the only feedback the drag has. Only the active position has
+     * handles, so only it can be mid-drag. */
+    const stopLoss = active && drag?.field === 'stopLoss' ? drag.price : position.stopLoss;
+    const takeProfit = active && drag?.field === 'takeProfit' ? drag.price : position.takeProfit;
 
     const long = position.size > 0;
     const profit = colour('pos');
     const loss = colour('neg');
     const width = right - left;
+    /* One position is being worked on and the others are context. They are all
+     * real money, so none of them is hidden — but the one the handles belong
+     * to has to be obvious, or a drag would be a guess. */
+    const dim = active ? 1 : INACTIVE_ALPHA;
 
     const yStop = stopLoss == null ? null : series.priceToCoordinate(stopLoss);
     const yTarget = takeProfit == null ? null : series.priceToCoordinate(takeProfit);
@@ -313,12 +394,12 @@ class ReplayRenderer {
         const wash = ctx.createLinearGradient(0, yEntry, 0, y);
         wash.addColorStop(0, 'transparent');
         wash.addColorStop(1, tone);
-        ctx.globalAlpha = ZONE_ALPHA;
+        ctx.globalAlpha = ZONE_ALPHA * dim;
         ctx.fillStyle = wash;
         ctx.fillRect(left, top, width, height);
       }
 
-      ctx.globalAlpha = EDGE_ALPHA;
+      ctx.globalAlpha = EDGE_ALPHA * dim;
       ctx.strokeStyle = tone;
       // A level under the pointer carries a little more weight, so a drag can
       // be seen to have hold of something.
@@ -329,10 +410,30 @@ class ReplayRenderer {
       ctx.stroke();
     };
 
-    zone(yStop, loss, drag?.field === 'stopLoss');
-    zone(yTarget, profit, drag?.field === 'takeProfit');
+    /* What each level comes to if it fills, net of the round trip — the same
+     * arithmetic break-even is solved from, so a stop moved there reads as
+     * zero rather than as the cost of the trip.
+     *
+     * Signed, and the sign is the whole point: a stop is only a loss while it
+     * is below the entry on a long. Moved past break-even it is money locked
+     * in, and drawing that block red with a loss written on it said the
+     * opposite of what had just been done to the trade. */
+    const stopResult = stopLoss == null || !marks.resultAt
+      ? null : marks.resultAt(position, stopLoss, true);
+    const targetResult = takeProfit == null || !marks.resultAt
+      ? null : marks.resultAt(position, takeProfit, false);
 
-    ctx.globalAlpha = ENTRY_ALPHA;
+    /* Break-even is protection that costs nothing, so it is not drawn as a
+     * loss — only a level that would actually take money is. Decided on the
+     * rounded figure, so the block and the tag on it always agree. */
+    const stopTone = stopResult != null && Math.round(stopResult * 100) < 0 ? loss : profit;
+    const targetTone = targetResult != null && Math.round(targetResult * 100) < 0
+      ? loss : profit;
+
+    zone(yStop, stopTone, active && drag?.field === 'stopLoss');
+    zone(yTarget, targetTone, active && drag?.field === 'takeProfit');
+
+    ctx.globalAlpha = ENTRY_ALPHA * dim;
     ctx.strokeStyle = colour('txt');
     ctx.lineWidth = 1;
     ctx.setLineDash([5, 4]);
@@ -344,11 +445,22 @@ class ReplayRenderer {
 
     // The entry itself, where it happened and which way it went.
     const tone = directionTone(long, colour);
-    if (left > -MARKER) this._marker(ctx, left, yEntry, long, tone);
+    if (left > -MARKER) this._marker(ctx, left, yEntry, long, tone, dim);
 
     const size = Math.abs(position.size);
-    const risk = stopLoss == null ? null : Math.abs(position.entryPrice - stopLoss) * size;
-    const reward = takeProfit == null ? null : Math.abs(takeProfit - position.entryPrice) * size;
+
+    /* One R, in money: what this trade risked per unit the first time it had a
+     * stop, times the size held. The ruler, not the current stop distance —
+     * measuring against where the stop is *now* is what makes R useless the
+     * moment a trade is managed, because break-even divides by nothing. Null
+     * until the position has ever had a stop, and then every R on the block is
+     * simply left off. */
+    const unit = position.riskPerUnit > 0 ? position.riskPerUnit * size : null;
+    const inR = (value) => {
+      if (unit == null || value == null) return '';
+      const r = Math.round((value / unit) * 100) / 100;
+      return `  ${r === 0 ? '' : r > 0 ? '+' : '−'}${Math.abs(r).toFixed(2)}R`;
+    };
 
     /* Against the right edge, beside the price scale: the number that is still
      * moving, and the two that decide what it can become. Each tag sits on its
@@ -357,83 +469,33 @@ class ReplayRenderer {
      * they are on a broker's ticket.
      *
      * The prices themselves are on the axis (see LevelAxisView), so these say
-     * what a level is *worth* rather than repeating what it is: the cash, and
-     * the same R the open figure is measured in. A stop is −1.00R by
-     * construction — R is the distance to it — and that is worth printing
-     * rather than leaving implied, because it is the scale the other two
-     * numbers on the block are read against. */
-    const stopR = risk > 0 ? '  −1.00R' : '';
-    const targetR = risk > 0 && reward != null ? `  +${(reward / risk).toFixed(2)}R` : '';
+     * what a level is *worth* rather than repeating what it is: the cash it
+     * comes to if it fills, and that same figure in R. Both signed. A stop
+     * used to be printed as −1.00R by construction, on the reasoning that R
+     * *is* the distance to it — which stops being true the first time the stop
+     * is moved, and is exactly wrong after a break-even. */
+    const pnl = marks.pnlFor ? marks.pnlFor(position) : marks.unrealized;
+    this._pnlTag(ctx, mediaSize, yEntry, position, pnl, unit, colour, active);
 
-    this._pnlTag(ctx, mediaSize, yEntry, position, marks.unrealized, risk, colour);
+    /* Only the position being worked on carries handles: the close button
+     * liquidates in one click, and three of them stacked against the same edge
+     * would be three chances to hit the wrong one. */
+    if (!active) return;
+
     this._closeButton(ctx, mediaSize, yEntry, this._source.hover === 'close', colour);
-    if (yStop != null) {
-      this._tag(ctx, mediaSize, yStop, `SL  −${money(risk)}${stopR}`, loss, colour);
+    if (yStop != null && stopResult != null) {
+      const text = `SL  ${signedMoney(stopResult)}${inR(stopResult)}`;
+      this._tag(ctx, mediaSize, yStop, text, stopTone, colour);
     }
-    if (yTarget != null) {
-      this._tag(ctx, mediaSize, yTarget, `TP  +${money(reward)}${targetR}`, profit, colour);
-    }
-  }
-
-  /**
-   * A market order that has been sent and has not filled.
-   *
-   * The engine's one rule is that an order fills on the bar *after* the one it
-   * was placed on, and nothing here bends it — this is not the position, it is
-   * the announcement of one. So it is dashed, it starts at the playhead rather
-   * than behind it, and it says which bar it is waiting for. What it cannot do
-   * is leave the click with no answer at all, which is what a market order used
-   * to do: it has no price of its own, so nothing was drawn until the bar that
-   * filled it arrived.
-   *
-   * The line sits at the last close, which is the honest estimate — the fill is
-   * the next bar's open plus costs, and nobody knows it yet.
-   */
-  _announced(ctx, marks, indexToX, barSpacing, mediaSize, colour) {
-    const entries = announcedEntries(marks.orders);
-    if (entries.length === 0 || marks.lastPrice == null) return;
-
-    const { series } = this._source;
-    const y = series.priceToCoordinate(marks.lastPrice);
-    if (y == null) return;
-
-    const left = indexToX(marks.index) + barSpacing / 2;
-    if (left > mediaSize.width) return;
-
-    for (const order of entries) {
-      const long = order.side === 'buy';
-      const tone = directionTone(long, colour);
-
-      ctx.globalAlpha = 1;
-      ctx.strokeStyle = tone;
-      ctx.lineWidth = 2;
-      ctx.setLineDash([5, 4]);
-      ctx.beginPath();
-      ctx.moveTo(left, y);
-      ctx.lineTo(mediaSize.width, y);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      this._marker(ctx, left, y, long, tone);
-
-      /* The same letter the open position wears, for the same reason — and
-       * here there is barely room for a word anyway: right of the playhead
-       * there are only the few bars the chart keeps as an offset, so the label
-       * slides left along its own line instead of being clipped by the pane. */
-      const label = long ? 'L' : 'S';
-      const detail = `${lots(order.size)} · next bar`;
-      const chip = chipWidth(ctx, label);
-      const total = chip + 4 + plateWidth(ctx, detail);
-      const x = Math.max(2, Math.min(left + 6, mediaSize.width - total - 2));
-
-      this._chip(ctx, x, y - LABEL_LIFT, label, tone, colour);
-      this._plate(ctx, x + chip + 4, y - LABEL_LIFT, detail, colour);
+    if (yTarget != null && targetResult != null) {
+      const text = `TP  ${signedMoney(targetResult)}${inR(targetResult)}`;
+      this._tag(ctx, mediaSize, yTarget, text, targetTone, colour);
     }
   }
 
   /** A filled triangle on a line, pointing the way the trade is facing. */
-  _marker(ctx, x, y, up, tone) {
-    ctx.globalAlpha = 1;
+  _marker(ctx, x, y, up, tone, alpha = 1) {
+    ctx.globalAlpha = alpha;
     ctx.fillStyle = tone;
     ctx.beginPath();
     if (up) {
@@ -450,43 +512,6 @@ class ReplayRenderer {
   }
 
   /**
-   * The direction, as a filled chip.
-   *
-   * Returns its width, so whatever goes beside it can be placed without
-   * measuring the same string twice. The width comes from `chipWidth`, which
-   * also sets the face — one padding, one measurement, no chance of the box and
-   * the text disagreeing about how wide the thing is.
-   */
-  _chip(ctx, x, y, text, tone, colour) {
-    ctx.globalAlpha = 1;
-    const width = chipWidth(ctx, text);
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-
-    ctx.fillStyle = tone;
-    fillRounded(ctx, x, y - CHIP_HEIGHT / 2, width, CHIP_HEIGHT);
-    ctx.fillStyle = colour('chart-bg');
-    ctx.fillText(text, x + 6, y + 0.5);
-    return width;
-  }
-
-  /** Text on a plate of the pane's own ground, so candles cannot swallow it. */
-  _plate(ctx, x, y, text, colour) {
-    const width = plateWidth(ctx, text);
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-
-    ctx.globalAlpha = PLATE_ALPHA;
-    ctx.fillStyle = colour('chart-bg');
-    fillRounded(ctx, x, y - CHIP_HEIGHT / 2, width, CHIP_HEIGHT);
-
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = colour('txt');
-    ctx.fillText(text, x + 5, y + 0.5);
-    return width;
-  }
-
-  /**
    * The position itself: which way, how big, and what it is worth right now.
    *
    * One tag on the entry line carrying all of it, because those three things
@@ -496,25 +521,31 @@ class ReplayRenderer {
    *
    * The direction is a letter rather than a word: LONG spelled out beside a
    * P&L is the least surprising thing on the chart, and the triangle at the
-   * entry says it in colour anyway. The result is unrealised, and taken from
-   * the Broker rather than worked out again here, so the number on the chart
-   * and the number in the panel can never disagree. In R beside it wherever
-   * there is a stop to measure against: 240 says very little on its own, and
-   * 240 against a risk of 400 says most of what there is to say.
+   * entry says it in colour anyway. The result is unrealised and marked to the
+   * last price, taken from the Broker rather than worked out again here, so
+   * the number on the chart and the number in the panel can never disagree.
+   *
+   * In R beside it wherever the trade has ever had a stop to measure against:
+   * 240 says very little on its own, and 240 against a risk of 400 says most
+   * of what there is to say. `unit` is one R in money and comes from what the
+   * trade risked to begin with — never from where the stop is now, which after
+   * a break-even is a denominator of nothing and turns a trade forty cents in
+   * front into +23R.
    */
-  _pnlTag(ctx, mediaSize, y, position, unrealized, risk, colour) {
+  _pnlTag(ctx, mediaSize, y, position, unrealized, unit, colour, active = true) {
     if (!Number.isFinite(unrealized)) return;
 
     const up = unrealized >= 0;
-    const r = risk > 0 ? unrealized / risk : null;
+    const r = unit > 0 ? unrealized / unit : null;
     const text = `${position.size > 0 ? 'L' : 'S'} ${lots(position.size)}`
       + `   ${up ? '+' : '−'}${money(unrealized)}`
       + (r === null ? '' : `  ${r >= 0 ? '+' : '−'}${Math.abs(r).toFixed(2)}R`);
 
     this._tag(
       ctx, mediaSize, y, text, colour(up ? 'pos' : 'neg'), colour,
-      // The close button sits outside it, on the same line.
-      CLOSE_INSET + CLOSE_SIZE + 4,
+      // The close button sits outside the active one, on the same line.
+      active ? CLOSE_INSET + CLOSE_SIZE + 4 : CLOSE_INSET,
+      active ? 1 : INACTIVE_ALPHA,
     );
   }
 
@@ -524,8 +555,8 @@ class ReplayRenderer {
    * `rightInset` is how much room to leave beyond it — the entry line's tag
    * hands over the width of the close button, which sits outside it.
    */
-  _tag(ctx, mediaSize, y, text, tone, colour, rightInset = CLOSE_INSET) {
-    ctx.globalAlpha = 1;
+  _tag(ctx, mediaSize, y, text, tone, colour, rightInset = CLOSE_INSET, alpha = 1) {
+    ctx.globalAlpha = alpha;
     numberFont(ctx);
     ctx.textAlign = 'left';
 
@@ -583,29 +614,37 @@ class ReplayRenderer {
     ctx.lineCap = 'butt';
   }
 
-  /** Pending orders, drawn only into the future they are waiting in. */
+  /**
+   * The orders that have not happened yet, and the handles on them.
+   *
+   * A dashed line at each waiting price, from the playhead rightwards — only
+   * into the future, because that is the only place they can still act. Which
+   * orders get a line is `draggableOrders`, shared with the hit test, so what
+   * is painted and what can be grabbed are the same set by construction.
+   *
+   * Two handles, and both appear only under the pointer. A line carrying a
+   * permanent cancel button would put a one-click way of destroying an order on
+   * the chart at all times, and the chart is a thing people wave a mouse across
+   * while reading. Hovering is the smallest deliberate act that can precede it.
+   */
   _orders(ctx, marks, indexToX, barSpacing, mediaSize, colour) {
     if (marks.orders.length === 0) return;
 
-    const { series } = this._source;
+    const { series, drag, hover } = this._source;
     const left = indexToX(marks.index) + barSpacing / 2;
+    const positions = marks.positions ?? (marks.position ? [marks.position] : []);
 
-    numberFont(ctx);
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'bottom';
-
-    for (const order of marks.orders) {
-      /* An open position's bracket is already on the chart: the block draws
-       * both levels, tags them with what they are worth, and is what a drag
-       * takes hold of. Drawing the orders behind it as well would put a second
-       * line and a second label on exactly the same price. */
-      if (marks.position && (order.tag === 'stop-loss' || order.tag === 'take-profit')) continue;
-
-      const price = order.type === 'limit' ? order.limitPrice : order.stopPrice;
-      // A market order has no price to draw against — `_announced` has it.
-      if (price == null) continue;
+    for (const order of draggableOrders(marks.orders, positions)) {
+      /* Where the pointer has it, if it is the one being dragged. Nothing has
+       * moved in the account yet — the drop is what asks the Broker to amend
+       * the order — so this line is a preview and the tag says the new price
+       * because that is the question being answered while dragging. */
+      const dragging = drag?.orderId === order.id;
+      const price = dragging ? drag.price : orderPrice(order);
       const y = series.priceToCoordinate(price);
       if (y == null) continue;
+
+      const pointed = dragging || hover === `order:${order.id}` || hover === `cancel:${order.id}`;
 
       /* An exit is read against the position it protects, so it keeps the
        * meaning colours; a resting entry is read as a direction. */
@@ -613,9 +652,9 @@ class ReplayRenderer {
         : order.tag === 'take-profit' ? colour('pos')
           : directionTone(order.side === 'buy', colour);
 
-      ctx.globalAlpha = ORDER_ALPHA;
+      ctx.globalAlpha = pointed ? 1 : ORDER_ALPHA;
       ctx.strokeStyle = tone;
-      ctx.lineWidth = 1;
+      ctx.lineWidth = pointed ? 1.5 : 1;
       ctx.setLineDash([6, 4]);
       ctx.beginPath();
       ctx.moveTo(left, y + 0.5);
@@ -623,13 +662,62 @@ class ReplayRenderer {
       ctx.stroke();
       ctx.setLineDash([]);
 
+      numberFont(ctx);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'bottom';
       ctx.fillStyle = tone;
       ctx.fillText(
         `${order.tag ?? `${order.side} ${order.type}`}  ${lots(order.size)} @ ${formatPrice(price)}`,
         left + 5,
         y - 3,
       );
+
+      if (pointed && !dragging) this._cancelButton(ctx, mediaSize, y, order.id, hover, colour);
     }
+  }
+
+  /**
+   * The × that takes one waiting order back out of the book.
+   *
+   * Outlined while the line is merely pointed at and filled once the pointer is
+   * on the button itself — the same two states, drawn the same way, as the
+   * button that closes a position. Two buttons that destroy something and look
+   * different from each other would have to be learned twice.
+   */
+  _cancelButton(ctx, mediaSize, y, id, hover, colour) {
+    const rect = orderCancelRect(mediaSize.width, y);
+    const tone = colour('neg');
+    const arm = CROSS_ARM - 1;
+
+    if (hover === `cancel:${id}`) {
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = tone;
+      fillRounded(ctx, rect.x, rect.y, rect.width, rect.height);
+      ctx.strokeStyle = colour('chart-bg');
+    } else {
+      ctx.globalAlpha = PLATE_ALPHA;
+      ctx.fillStyle = colour('chart-bg');
+      fillRounded(ctx, rect.x, rect.y, rect.width, rect.height);
+
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = tone;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(rect.x + 0.5, rect.y + 0.5, rect.width - 1, rect.height - 1, CORNER);
+      ctx.stroke();
+    }
+
+    const cx = rect.x + rect.width / 2;
+    const cy = rect.y + rect.height / 2;
+    ctx.lineWidth = 1.5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(cx - arm, cy - arm);
+    ctx.lineTo(cx + arm, cy + arm);
+    ctx.moveTo(cx + arm, cy - arm);
+    ctx.lineTo(cx - arm, cy + arm);
+    ctx.stroke();
+    ctx.lineCap = 'butt';
   }
 }
 

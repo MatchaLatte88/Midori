@@ -103,7 +103,7 @@ export const DRAWING_COLORS = [
   { id: 'ind-3', label: 'Pink' },
   { id: 'ind-4', label: 'Orange' },
   { id: 'ind-5', label: 'Slate' },
-  { id: 'accent', label: 'Midori' },
+  { id: 'accent', label: 'Midorii' },
 ];
 
 /* An FVG box is coloured by the direction of the gap rather than by whatever
@@ -169,7 +169,7 @@ export function normalizeWidth(value) {
 export const ZONE_COLORS = [
   { id: 'pos', label: 'Green' },
   { id: 'neg', label: 'Red' },
-  { id: 'accent', label: 'Midori' },
+  { id: 'accent', label: 'Midorii' },
   { id: 'ind-1', label: 'Amber' },
   { id: 'ind-2', label: 'Violet' },
   { id: 'ind-3', label: 'Pink' },

@@ -1,4 +1,4 @@
-# Midori
+# Midorii
 
 Lokales Backtesting und Trading-Bot-Entwicklung als Desktop-App. Marktdaten kommen aus
 kostenlosen öffentlichen Archiven auf den eigenen Rechner, Strategien laufen als
@@ -192,6 +192,47 @@ Sekunde. Alles vor dem Abspielkopf steht zum Lesen da, alles danach existiert f�
 nicht: Die Indikatoren rechnen nur über die aufgedeckten Bars, weil sie die anderen gar nicht
 bekommen.
 
+**Den Timeframe wechselst du mitten in der Sitzung** — mit demselben Umschalter wie sonst. Der
+Abspielkopf bleibt auf demselben *Moment* stehen, keine Bar wird zweimal gespielt, und wo der
+Moment mitten in einer Bar des neuen Timeframes liegt, wird die als das gezeichnet, was sie
+bisher ist; der nächste Schritt macht sie fertig. H4 lesen, auf M5 runter, Einstieg suchen,
+zurück — ohne die Sitzung zu verlieren.
+
+**Vorspulen**: „Skip ››" mit der Anzahl daneben (oder Umschalt+Pfeil rechts), und „Jump to" für
+ein Datum. Beides spielt jede Bar durch die Engine, statt den Abspielkopf zu versetzen — was
+gefüllt hätte, füllt, und was ausgestoppt worden wäre, ist es. Rückwärts geht nicht: Das Konto
+hat die Bars dahinter gehandelt.
+
+**Der Arbeitsplatz** ist aufgeteilt wie ein Terminal: unter dem Chart ein **Dock** mit
+*Positions*, *Orders* und *History* — eine Zeile je Position mit Einstieg, Stop, Ziel, Risiko,
+Ergebnis in $ und in R und den Knöpfen dahinter (Manage, Reverse, ×). Rechts in der Reiterzeile
+steht das Konto: Equity, offenes Ergebnis und **offenes Risiko** — was alle Stops zusammen
+kosten würden, wenn sie fielen. Eine Position ohne Stop wird dort separat gezählt („+1
+unprotected") statt als null mitsummiert: Sie riskiert nicht wenig, sondern einen Betrag, den
+niemand entschieden hat. Das Dock klappt weg; die Kontozeile bleibt.
+
+Links stehen drei Reiter: **Trade** (der Manager für eine Position), **Ticket** (der Weg in eine
+neue) und **Session** (Konto, Speichern, Pausieren, Beenden).
+
+**Klick auf eine Position im Chart öffnet ihren Manager.** Dort liegt alles, was sich nicht
+ziehen lässt: Stop und Ziel als Zahl, **Ziel auf 1R/2R/3R** per Knopf, Break-even, Trailing
+(„R" füllt den Abstand des aktuellen Stops ein), Teilschluss über ¼ ½ ¾ *oder* eine frei
+getippte Größe, Alles-Schließen und **Reverse** — schließen und in derselben Größe andersherum
+hinein, beide Fills zum selben Preis. Das sind ehrlich zwei Trades: Der alte wird mit seinem
+Ergebnis abgerechnet, der neue startet ohne Stop, weil die Level einer falschen Lesart auch
+falsch sind. Steht kein Stop, sagt der Manager es als Warnung, statt eine Null hinzuschreiben.
+
+**Wartende Orders ziehst du ebenfalls im Chart.** Die gestrichelte Linie einer ruhenden Order
+lässt sich greifen und verschieben — die Order wird dabei *geändert*, nicht storniert und neu
+gesetzt, behält also ihre Id und ihren Platz im Buch, und es gibt keinen Moment ohne Order im
+Markt. Auf der Linie erscheint beim Darüberfahren ein ×, das sie zurücknimmt. Ein Ziehen, das
+die Order auslösbar machen würde oder sie über ihren eigenen Stop hinwegzöge, wird abgelehnt
+und sagt warum.
+
+**Die Historie ist anklickbar**: Ein Klick auf einen abgeschlossenen Trade rückt den Chart auf
+ihn und zeichnet ihn hervorgehoben mit seinem Ergebnis. Nur die Ansicht bewegt sich — der
+Abspielkopf und das Konto bleiben, wo sie sind.
+
 Gehandelt wird links im Ticket: Market, Limit oder Stop, Stop und Ziel per Klick vom Chart
 (⌖ arme das Feld, dann auf den Preis klicken). Die **Größe folgt aus dem Risiko** — dieselbe
 Rechnung wie bei den Strategien, also ist ein von Hand genommener Trade bei gleichem Stop
@@ -220,6 +261,39 @@ Richtung, Größe und das offene Ergebnis: `L 0,05  +$142,30  +0,57R`.
 
 **Ganz rechts auf der Positionslinie sitzt ein ×.** Ein Klick darauf schließt die Position zu
 Markt — dasselbe wie „Close" im Panel, nur ohne den Weg dorthin.
+
+**Mehrere Positionen dürfen nebeneinander offen sein**, auch gegenläufige. Der zweite Einstieg
+ist eine zweite Meinung — ein Runner neben einem Scalp —, und ihn in den ersten hineinzumitteln
+würde verstecken, ob jeder von beiden richtig war. Jede Position hat ihren eigenen Einstieg,
+ihren eigenen Stop und ihr eigenes Ergebnis. Eine davon ist die, an der du gerade arbeitest:
+Sie trägt die Griffe am Chart und das ×, die anderen werden gedämpft daneben gezeichnet. Ein
+Klick auf ihre Karte im Panel — oder auf eine ihrer Linien im Chart — macht sie zur aktiven.
+
+**Und du kannst eine Position halten statt nur haben.** Im Panel unter der Position:
+
+- **¼ ½ ¾** nehmen einen Teil zu Markt heraus, der Rest läuft mit demselben Einstieg weiter.
+  Was weggeht, ist ein abgeschlossener Trade mit eigenem Ergebnis.
+- **Break-even** setzt den Stop dorthin, wo der Trade bei null herauskommt — *hinter* den
+  Einstieg, um die Kosten des Ausstiegs. Ein Stop auf dem Einstieg selbst ist jedes Mal ein
+  kleiner Verlust.
+- **Trail** zieht den Stop im eingegebenen Abstand hinter dem besten erreichten Preis nach,
+  und nie zurück. „R" füllt den Abstand zum aktuellen Stop ein.
+- **Protect** ändert Stop und Ziel — und zwar die Orders, die schon liegen, statt sie zu
+  stornieren und neue zu schicken. Dazwischen liegt sonst ein Moment ohne Schutz im Markt.
+
+**Abgeschlossene Trades bleiben auf dem Chart** — eine dünne Linie vom Einstieg zum Ausstieg in
+der Farbe des Ergebnisses. Der Knopf „Trades" in der Leiste schaltet sie ab, wenn der Chart
+sauber sein soll.
+
+**Die Tastatur macht das Übliche mit:** Leertaste spielt, Pfeil rechts geht einen Schritt,
+Umschalt+Pfeil spult vor, **B** und **S** kaufen und verkaufen zu Markt (in der Größe der
+Schnellleiste), **H** nimmt die Hälfte heraus, **C** schließt die Position, **Umschalt+C**
+alles, **E** setzt den Stop auf Break-even. Nichts davon feuert, während du in ein Feld tippst.
+
+**Aufhören, ohne die Sitzung zu verlieren:** „Pause for later" legt Konto, offene Positionen
+und Abspielkopf weg; beim nächsten Mal steht die Sitzung in der Liste „Carry on" und geht auf
+derselben Bar weiter. Die Bars werden dabei nicht mitgespeichert — die liegen schon auf der
+Platte und sind morgen dieselben.
 
 **Oder du zeichnest den Trade und schickst ihn ab.** Mit dem Positionswerkzeug Entry, Stop und
 Ziel ziehen, dann **Rechtsklick auf den Block**:
@@ -292,7 +366,7 @@ keine Annotationen mitnimmt.
 
 ## Woher die Daten kommen
 
-Midori liefert selbst keine Marktdaten aus — die App lädt auf deine Anweisung in dein
+Midorii liefert selbst keine Marktdaten aus — die App lädt auf deine Anweisung in dein
 eigenes Benutzerverzeichnis. Aktuell implementiert ist Binances öffentliches Archiv
 (kein API-Key, kein Konto). Geplant: Dukascopy für Forex, CSV-Import für Futures, Alpaca
 für US-Aktien.
@@ -305,12 +379,13 @@ Live-Daten sind kein Ziel. Historie bis gestern genügt fürs Backtesting.
 electron/
   data/providers/   Quellen-Adapter (binance.js)
   data/store/       barStore.js — Binärformat, Merge, Timeframe-Aggregation
+  data/store/       sessionStore.js — angehaltene Replay-Sitzungen (Konto, ohne Bars)
   engine/           backtest.js (Loop), sweepRunner.js, sweepManager.js
   ipc.js            einzige Brücke zum Renderer
   main.js           Fenster, titleBarOverlay
 shared/
-  engine/broker.js  Orders, Fills, Position — von Backtest und Replay gemeinsam genutzt
-  engine/           summary.js (Kennzahlen), replaySession.js (Abspielkopf, Konto)
+  engine/broker.js  Orders, Fills, Positionen (netting/hedging) — Backtest und Replay
+  engine/           summary.js (Kennzahlen), replaySession.js (Abspielkopf, Uhr, Konto)
   engine/           plannedTrade.js — aus einer gezeichneten Position wird eine Order
   indicators/       von Chart und Engine gemeinsam genutzt: index.js, volumeProfile.js
   strategies/       backtestbare Regeln: Registry, Risiko/Sizing, silverBullet.js
@@ -321,14 +396,18 @@ src/
   components/       ChartPanel, DataManager, IndicatorPanel, DrawingToolbar
   components/chart/ volumeProfilePrimitive.js — Canvas-Plugin für das Profil
   components/chart/ fvgPrimitive.js, sessionPrimitive.js, huntPrimitive.js, setupPrimitive.js
-  components/chart/ replayPrimitive.js — offene Position und wartende Orders
+  components/chart/ replayPrimitive.js — Positionen, wartende Orders, erledigte Trades
+  components/chart/ replayLevels.js — was im Chart greifbar ist, und welche Drops abgelehnt werden
   components/chart/drawings/  Geometrie, Modell, Rendering und Maussteuerung
   components/       LineStyleBar, PositionStyleBar — Stilleisten über dem Chart
   components/       BacktestPanel, ResultsPage — Läufe starten und vergleichen
-  components/       ReplayBar, ReplayPanel — Transport, Konto und Ticket
+  components/       ReplayBar, ReplayPanel — Transport und die drei Reiter der Seitenspalte
+  components/       TradeDock — Positionen, Orders und Historie unter dem Chart
+  components/       TradeManager, OrderTicket — eine Position verwalten, eine neue eröffnen
   components/       ChartContextMenu — Rechtsklick-Menü über dem Chart
   stores/session.js Symbol, Timeframe, Bibliothek, aktive Indikatoren
-  stores/replay.js  Abspielkopf, Fenster, Minuten-Cache, Order-Aktionen
+  stores/replay.js  Abspielkopf, Fenster, Minuten-Cache, Order-Aktionen, Risiko in R
+  format.js         wie Geld, Preise, Größen und R geschrieben werden
   styles/           Katsumii „Living Data" — tokens.css, base.css, fonts.css
 scripts/            Werkzeuge: Smoke-Test, Backtest-Runner, Versions-Sync
 test/               node:test — Store, Aggregation, Parser, Indikatoren, Profil, Engine,
@@ -342,7 +421,10 @@ Details und Begründungen der Entscheidungen: [ARCHITECTURE.md](ARCHITECTURE.md)
 M0 bis M2 stehen: Datenbeschaffung, Speicherung, Aggregation, Chart, Indikatoren, Volume
 Profile, Zeichenwerkzeuge, die Order-Engine samt Backtest-Loop und Sweeps, sowie Replay —
 Bar für Bar von Hand handeln auf derselben Engine, mit gespeicherten Sitzungen, die neben den
-Backtests im Vergleich stehen.
+Backtests im Vergleich stehen. Dazu das, was eine Sitzung erst wie eine echte macht:
+Timeframe-Wechsel mitten im Lauf, mehrere Positionen nebeneinander, Teilschließung,
+Break-even und Trailing, Vorspulen und Springen, abgeschlossene Trades auf dem Chart,
+Handels-Hotkeys und Sitzungen, die man weglegen und wieder aufnehmen kann.
 
 Offen sind der Bot-Editor für eigene Strategien (M3), risikoadjustierte Kennzahlen und ein
 Benchmark (M4) sowie weitere Datenquellen (M5) — siehe ARCHITECTURE.md, Abschnitt 11.

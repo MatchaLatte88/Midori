@@ -94,7 +94,7 @@ const emit = defineEmits(['update']);
   width: 13px;
   height: 13px;
   border-radius: 3px;
-  border: 1px solid var(--brd);
+  border: 1px solid var(--line);
   padding: 0;
   cursor: pointer;
 }
@@ -111,12 +111,12 @@ const emit = defineEmits(['update']);
   width: 24px;
   height: 18px;
   padding: 0;
-  border: 1px solid var(--line);
+  border: 1px solid var(--brd);
   border-radius: var(--radius-sm);
-  background: transparent;
+  background: var(--glass);
   cursor: pointer;
 }
-.pick:hover { border-color: var(--brd); }
+.pick:hover { background: var(--glass-strong); }
 .pick.is-active {
   border-color: var(--accent-brd);
   background: var(--accent-bg);

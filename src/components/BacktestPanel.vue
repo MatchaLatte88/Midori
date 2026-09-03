@@ -157,7 +157,7 @@ const money = (v) => (v == null ? '—' : v.toLocaleString(undefined, {
         </span>
       </header>
 
-      <div v-if="catalog.length === 0" class="empty k-mono-label">No strategies registered</div>
+      <div v-if="catalog.length === 0" class="empty k-prose">No strategies registered</div>
 
       <div v-else class="strategies">
         <button
@@ -173,7 +173,7 @@ const money = (v) => (v == null ? '—' : v.toLocaleString(undefined, {
       </div>
 
       <template v-if="spec">
-        <p v-if="fromSweep" class="from-sweep k-mono-label">
+        <p v-if="fromSweep" class="from-sweep k-prose">
           Filled from a sweep. This range includes the bars these settings were chosen on,
           so expect a friendlier result than the sweep's out-of-sample column.
         </p>
@@ -202,7 +202,7 @@ const money = (v) => (v == null ? '—' : v.toLocaleString(undefined, {
           </span>
           <button v-if="dataset" class="btn btn--sm btn--default" @click="useFullRange">Use all</button>
         </div>
-        <p v-if="from && to && !rangeValid" class="warn k-mono-label">The end date must be after the start.</p>
+        <p v-if="from && to && !rangeValid" class="warn k-prose">The end date must be after the start.</p>
 
         <div class="k-divider-h"></div>
         <span class="k-eyebrow">Parameters</span>
@@ -211,16 +211,16 @@ const money = (v) => (v == null ? '—' : v.toLocaleString(undefined, {
         <button class="btn btn--accent run" :disabled="!canRun" @click="run">
           {{ running ? 'Running…' : 'Run backtest' }}
         </button>
-        <p v-if="!session.symbol" class="warn k-mono-label">Select a symbol on the chart first.</p>
+        <p v-if="!session.symbol" class="warn k-prose">Select a symbol on the chart first.</p>
       </template>
     </section>
 
     <section class="k-panel result">
       <span class="k-eyebrow">Result</span>
 
-      <div v-if="running" class="placeholder k-mono-label">Running…</div>
+      <div v-if="running" class="placeholder k-prose">Running…</div>
 
-      <div v-else-if="!lastRun" class="placeholder k-mono-label">
+      <div v-else-if="!lastRun" class="placeholder k-prose">
         No run yet. Set the parameters and press Run.
       </div>
 
@@ -245,7 +245,7 @@ const money = (v) => (v == null ? '—' : v.toLocaleString(undefined, {
           <div><dt>Fees paid</dt><dd>{{ money(lastRun.stats.feesPaid) }}</dd></div>
         </dl>
 
-        <p class="k-mono-label faint">
+        <p class="k-prose faint">
           Fills resolved {{ lastRun.resolution === 'intrabar' ? 'from minute bars' : 'pessimistically' }}.
         </p>
 
@@ -269,10 +269,10 @@ const money = (v) => (v == null ? '—' : v.toLocaleString(undefined, {
 .setup {
   display: flex;
   flex-direction: column;
-  gap: 7px;
-  width: 320px;
+  gap: 10px;
+  width: 332px;
   flex: none;
-  padding: 12px;
+  padding: 18px;
   overflow-y: auto;
 }
 
@@ -280,8 +280,8 @@ const money = (v) => (v == null ? '—' : v.toLocaleString(undefined, {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 16px;
+  gap: 12px;
+  padding: 18px;
   overflow-y: auto;
 }
 /* A stretch item in a column flexbox fills the width; this one is a button. */
@@ -297,17 +297,17 @@ const money = (v) => (v == null ? '—' : v.toLocaleString(undefined, {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 8px 9px;
+  padding: 13px 14px;
   text-align: left;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: transparent;
+  border: 1px solid var(--brd);
+  border-radius: var(--radius-md);
+  background: var(--glass);
   cursor: pointer;
 }
-.strategy:hover { border-color: var(--brd); }
+.strategy:hover { background: var(--glass-strong); }
 .strategy.is-active { border-color: var(--accent-brd); background: var(--accent-bg); }
 .strategy-name {
-  font-family: 'Plus Jakarta Sans', Inter, sans-serif;
+  font-family: var(--font-num);
   font-weight: 600;
   font-size: 12px;
 }
@@ -340,7 +340,7 @@ const money = (v) => (v == null ? '—' : v.toLocaleString(undefined, {
 .k-divider-h { height: 1px; background: var(--line); margin: 3px 0; }
 
 .headline {
-  font-family: 'DM Mono', ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 30px;
   font-weight: 500;
   letter-spacing: -0.02em;
@@ -357,7 +357,7 @@ const money = (v) => (v == null ? '—' : v.toLocaleString(undefined, {
 }
 .figures div { display: flex; flex-direction: column; gap: 2px; }
 .figures dt {
-  font-family: 'DM Mono', ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -365,7 +365,7 @@ const money = (v) => (v == null ? '—' : v.toLocaleString(undefined, {
 }
 .figures dd {
   margin: 0;
-  font-family: 'DM Mono', ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 15px;
 }
 </style>

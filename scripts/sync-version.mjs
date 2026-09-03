@@ -22,4 +22,4 @@ writeJson('package-lock.json', packageLock);
 
 writeText('src/generated/version.js', frontendSource(version));
 
-process.stdout.write(`Synchronized Midori version ${version}.\n`);
+process.stdout.write(`Synchronized Midorii version ${version}.\n`);

@@ -12,7 +12,7 @@ html, body, #app {
 body {
   background-color: var(--bg);
   color: var(--txt);
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-family: var(--font-ui);
   font-size: 13px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
@@ -22,7 +22,7 @@ button { font: inherit; color: inherit; }
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: 8px;
 }
 
 /* ─── Ambient blobs (fixed, behind everything) ───────────────────────────── */
@@ -37,53 +37,56 @@ button { font: inherit; color: inherit; }
   transition: background 0.3s;
 }
 
-/* ─── Panel: gradient surface (no backdrop blur) ─────────────────────────── */
+/* ─── Panel: one quiet surface, no edge (no backdrop blur) ───────────────── */
 .k-panel {
-  border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: linear-gradient(160deg, var(--panel-a), var(--panel-b));
+  background: var(--panel-bg);
   box-shadow: var(--panel-shadow);
-  transition: border-color 0.25s;
 }
 
 /* ─── Typography roles ───────────────────────────────────────────────────── */
+/* A section is named, not labelled: the wordmark's face at reading size in
+   mixed case. The rule that used to lead it is gone — the type is enough. */
 .k-eyebrow {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 8px;
-  font-family: 'DM Mono', ui-monospace, monospace;
-  font-size: 10px;
-  font-weight: 400;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
+  font-family: var(--font-title);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
   color: var(--accent);
 }
-.k-eyebrow::before {
-  content: '';
-  width: 18px;
-  height: 1px;
-  background: var(--accent);
-  flex-shrink: 0;
-}
 .k-mono-label {
-  font-family: 'DM Mono', ui-monospace, monospace;
-  font-size: 9px;
+  font-family: var(--font-mono);
+  font-size: 10px;
   font-weight: 400;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--sec);
-}
-.k-mono-meta {
-  font-family: 'DM Mono', ui-monospace, monospace;
-  font-size: 9px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--sec);
 }
+.k-mono-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--sec);
+}
+/* Running text that happens to sit in a panel. Mono capitals are for labels;
+   a sentence gets the UI face at a readable size. */
+.k-prose {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+  line-height: 1.6;
+  color: var(--sec);
+}
 .k-num {
-  font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-family: var(--font-num);
+  font-weight: 600;
+  letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
 }
 
@@ -92,30 +95,30 @@ button { font: inherit; color: inherit; }
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-family: 'DM Mono', ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 9px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--accent);
-  border: 1px solid var(--accent-brd);
-  border-radius: 999px;
-  padding: 2px 8px;
+  background: var(--accent-bg);
+  border-radius: var(--radius-pill);
+  padding: 3px 10px;
 }
 
 /* ─── Note: ember-accented callout, max one per view ─────────────────────── */
 .k-note {
-  border: 1px solid var(--line);
   border-left: 3px solid var(--ember);
   border-radius: var(--radius-md);
-  padding: 8px 12px;
+  padding: 10px 14px;
   font-size: 12px;
+  line-height: 1.6;
   color: var(--sec);
-  background: linear-gradient(160deg, var(--panel-a), var(--panel-b));
+  background: var(--glass);
 }
 .k-note b {
   display: block;
   margin-bottom: 2px;
-  font-family: 'DM Mono', ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 9px;
   font-weight: 500;
   letter-spacing: 0.16em;
@@ -140,25 +143,24 @@ button { font: inherit; color: inherit; }
 .btn:disabled { opacity: 0.4; cursor: default; }
 .btn--sm { min-height: 28px; padding: 0 10px; font-size: 11px; }
 .btn--default { border: 1px solid var(--brd); background: var(--glass); color: var(--txt); }
-.btn--accent  { border: 1px solid var(--accent-brd); background: var(--accent-bg); color: var(--accent); }
+.btn--accent  { border: 1px solid transparent; background: var(--accent-bg); color: var(--accent); }
 .btn--accent:hover:not(:disabled) {
   background: color-mix(in srgb, var(--accent) 20%, transparent);
   border-color: var(--accent);
   opacity: 1;
 }
-.btn--danger { border: 1px solid rgba(239,68,68,0.3); background: rgba(239,68,68,0.08); color: #ef4444; }
+.btn--danger { border: 1px solid transparent; background: rgba(239,68,68,0.10); color: #ef4444; }
 
 .primary-btn {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   padding: 6px 16px;
-  border-radius: 999px;
-  font-family: 'DM Mono', ui-monospace, monospace;
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
   background: var(--accent);
   color: var(--btn-primary-fg);
   border: 1px solid var(--accent);
@@ -189,7 +191,6 @@ button { font: inherit; color: inherit; }
 .icon-btn:hover:not(:disabled) {
   color: var(--txt);
   background: var(--glass);
-  border-color: var(--brd);
 }
 .icon-btn:disabled { opacity: 0.35; cursor: default; }
 .icon-btn.is-active { color: var(--accent); background: var(--accent-bg); border-color: var(--accent-brd); }
@@ -199,7 +200,7 @@ button { font: inherit; color: inherit; }
 .k-divider { width: 1px; height: 18px; background: var(--line); flex-shrink: 0; }
 
 /* ─── Scrollbars ─────────────────────────────────────────────────────────── */
-* { scrollbar-width: thin; scrollbar-color: var(--brd) transparent; }
+* { scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) transparent; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {

@@ -23,6 +23,15 @@ const state = reactive({
   /** 'system' | 'light' | 'dark' — read from storage below. */
   themeMode: 'system',
 
+  /* Whether each side panel is showing.
+   *
+   * Per side rather than one flag, because the two answer different questions —
+   * the left one is where a session or a download is set up, the right one is
+   * what is on the chart — and someone reading a chart wants the second one
+   * gone far more often than the first. Persisted: room made on a chart today
+   * should still be there tomorrow. */
+  panels: { left: true, right: true, dock: true },
+
   /* Active chart indicators. `uid` exists because the same indicator can be
    * added twice with different periods — a 20 and a 50 SMA are two entries. */
   indicators: [],
@@ -155,6 +164,59 @@ export function toggleIndicator(uid) {
 
 export function setVolumeProfile(patch) {
   Object.assign(state.volumeProfile, patch);
+}
+
+/* ─── Side panels ───────────────────────────────────────────────────────── */
+
+/* 'dock' is the trade dock under a replay's chart. Not a side, strictly — but
+ * it is a panel that folds away and has to remember that it did, which is the
+ * whole of what this mechanism is, so it uses it rather than growing a second
+ * one beside it. */
+export const PANEL_SIDES = ['left', 'right', 'dock'];
+
+/* Read the same way the theme is, and for the same reason: a UI preference
+ * that cannot be read back is a preference that does not persist, not an error
+ * anyone needs a banner about. Anything stored that is not a boolean per side
+ * is treated as nothing stored — both panels open is the state the app ships
+ * in, and the worst it costs is one click. */
+function storedPanels() {
+  const open = { left: true, right: true, dock: true };
+  try {
+    const raw = JSON.parse(localStorage.getItem('midori.panels') ?? '{}');
+    for (const side of PANEL_SIDES) {
+      if (typeof raw?.[side] === 'boolean') open[side] = raw[side];
+    }
+  } catch (e) { /* nothing stored, or not ours */ }
+  return open;
+}
+
+Object.assign(state.panels, storedPanels());
+
+export function togglePanel(side) {
+  setPanel(side, !state.panels[side]);
+}
+
+/**
+ * Opens a panel that something is about to put content into.
+ *
+ * Clicking a position on the chart opens its manager in the side panel — and
+ * if that panel is folded away, the click would otherwise do nothing anybody
+ * can see. Asking is not an option here: the click already said what was
+ * wanted.
+ */
+export function openPanel(side) {
+  if (state.panels[side]) return;
+  setPanel(side, true);
+}
+
+function setPanel(side, open) {
+  if (!PANEL_SIDES.includes(side)) {
+    throw new Error(`Unknown panel side "${side}". Known: ${PANEL_SIDES.join(', ')}`);
+  }
+  state.panels[side] = open;
+  try {
+    localStorage.setItem('midori.panels', JSON.stringify(state.panels));
+  } catch (e) { /* private mode — the panel still moves, it just forgets */ }
 }
 
 /* ─── Theme ─────────────────────────────────────────────────────────────── */

@@ -1,7 +1,7 @@
 {
   "name": "project-midori",
-  "version": "0.1.11-dev",
-  "description": "Midori — local backtesting and trading-bot workbench",
+  "version": "0.1.12-dev",
+  "description": "Midorii — local backtesting and trading-bot workbench",
   "private": true,
   "type": "module",
   "main": "electron/main.js",

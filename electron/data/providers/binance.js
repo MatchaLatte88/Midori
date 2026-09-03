@@ -3,9 +3,9 @@
  * No API key, no rate limit, no account: Binance publishes monthly and daily
  * kline dumps as ZIPped CSV with a SHA256 sidecar. That makes it the one free
  * source where a full 1m history can be fetched end to end, which is why it is
- * the first provider Midori ships.
+ * the first provider Midorii ships.
  *
- * Midori never redistributes this data — it downloads into the user's own
+ * Midorii never redistributes this data — it downloads into the user's own
  * machine on their request. That distinction is what keeps the app a tool
  * rather than a data product.
  *

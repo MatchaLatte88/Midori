@@ -132,7 +132,7 @@ function pick(item) {
 .row.is-disabled { cursor: default; }
 
 .label {
-  font-family: 'Plus Jakarta Sans', Inter, sans-serif;
+  font-family: var(--font-num);
   font-weight: 600;
   font-size: 12px;
   color: var(--txt);

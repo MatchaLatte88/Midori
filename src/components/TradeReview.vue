@@ -266,7 +266,7 @@ const held = (t) => {
       </div>
     </header>
 
-    <p v-if="trades.length === 0" class="empty k-mono-label">This run took no trades.</p>
+    <p v-if="trades.length === 0" class="empty k-prose">This run took no trades.</p>
 
     <template v-else>
       <div v-if="trade" class="facts">
@@ -315,15 +315,15 @@ const held = (t) => {
   align-items: center;
   flex-wrap: wrap;
   gap: 10px;
-  padding: 7px 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  padding: 12px 15px;
+  border: 1px solid var(--brd);
+  border-radius: var(--radius-md);
   background: var(--glass);
 }
 .spacer { flex: 1; }
 
 .side {
-  font-family: 'DM Mono', ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -336,18 +336,19 @@ const held = (t) => {
 .chip {
   color: var(--sec);
   padding: 2px 6px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--brd);
+  background: var(--glass);
   border-radius: 4px;
 }
 
-.pnl { font-family: 'DM Mono', ui-monospace, monospace; font-size: 14px; }
+.pnl { font-family: var(--font-mono); font-size: 14px; }
 .is-up { color: var(--pos); }
 .is-down { color: var(--neg); }
 
 .chart-wrap { position: relative; flex: 1; min-height: 260px; }
 .chart {
   height: 100%;
-  border: 1px solid var(--line);
+  border: 1px solid var(--chart-brd);
   border-radius: var(--radius-sm);
   overflow: hidden;
 }

@@ -1,11 +1,27 @@
-/* ─── Midori design tokens ────────────────────────────────────────────────
-   Design language: "Living Data" — inherited from the Katsumii app.
-   Warm ink + one disciplined accent on a calm ground, gradient panels
-   (no glass blur), mono labels for meta text.
+/* ─── Midorii design tokens ───────────────────────────────────────────────
+   Design language: "Stille Karten" — the quiet-surface descendant of the
+   Katsumii "Living Data" language. What changed, and why:
+
+   Fills, not edges. A border draws a line the eye has to read before it can
+   read the content. A surface a few percent off the ground separates just as
+   clearly and says nothing. So --brd is transparent and --glass carries the
+   separation; because the fill is semi transparent it stacks, and an input on
+   a card still reads against the card it sits on.
+
+   Wide radii and one deep shadow. 22 for panels, 16 for cards, 11 for
+   controls. The shadow is the only thing lifting a panel off the ground,
+   so it is soft and far rather than tight and dark.
+
+   Section names are set in the wordmark's own face at reading size in mixed
+   case, not in mono capitals — a title, not a machine label. Mono stays where
+   it belongs: on data and on the small print beside it.
+
+   Type is four tokens (--font-ui / --font-title / --font-num / --font-mono).
+   Nothing outside this file names a typeface, so changing one is one line.
 
    Two deliberate departures from the Acrobar/Katsumii palette:
 
-   1. The accent is Midori green. Because the accent is green, profit does
+   1. The accent is Midorii green. Because the accent is green, profit does
       NOT get a second green — `--pos` IS the accent. Loss keeps the single
       red alarm tone. Two greens side by side would read as noise.
 
@@ -18,26 +34,37 @@
    Accent is a single pair of tokens (--accent / --accent-*). Swapping the
    product accent means editing those lines only. */
 
+/* ─── Type roles ─────────────────────────────────────────────────────────── */
+:root {
+  --font-ui:    'Inter Tight', system-ui, -apple-system, sans-serif;
+  --font-title: 'Inter Tight', system-ui, sans-serif;
+  --font-num:   'Inter Tight', system-ui, sans-serif;
+  --font-mono:  'DM Mono', ui-monospace, SFMono-Regular, monospace;
+}
+
 /* ─── Light mode (default) ───────────────────────────────────────────────── */
 :root {
   --bg:             #f8fafc;
   --txt:            #0f172a;
   --sec:            #64748b;
   --faint:          #94a3b8;
-  --brd:            rgba(15, 23, 42, 0.10);
+  /* No control keeps an edge — --glass separates instead. --line survives for
+     the few places that genuinely are a line: dividers and table rules. */
+  --brd:            transparent;
   --line:           rgba(15, 23, 42, 0.10);
   --line-soft:      rgba(15, 23, 42, 0.055);
+  --scroll-thumb:   rgba(15, 23, 42, 0.22);
 
-  /* Panels — gradient surfaces, semi transparent so the ambient glow reads through */
-  --panel-a:        rgba(255, 255, 255, 0.92);
-  --panel-b:        rgba(255, 255, 255, 0.72);
-  --panel-shadow:   0 10px 30px rgba(15, 23, 42, 0.06);
-  --glass:          rgba(255, 255, 255, 0.80);
-  --glass-brd:      rgba(255, 255, 255, 0.96);
+  /* Panels — one flat surface, lifted by a single soft shadow */
+  --panel-bg:       rgba(255, 255, 255, 0.92);
+  --panel-shadow:   0 18px 44px -12px rgba(15, 23, 42, 0.16);
+  --glass:          color-mix(in srgb, var(--sec) 9%, transparent);
+  --glass-brd:      transparent;
+  --glass-strong:   color-mix(in srgb, var(--sec) 18%, transparent);
 
   /* Chrome surfaces */
-  --topbar-bg:      var(--glass);
-  --topbar-shadow:  0 6px 22px rgba(80,100,200,0.10), 0 1px 6px rgba(0,0,0,0.05), inset 0 1px 0 rgba(255,255,255,1);
+  --topbar-bg:      rgba(255, 255, 255, 0.72);
+  --topbar-shadow:  0 10px 30px -14px rgba(15, 23, 42, 0.22);
   --rail-bg:        #f3f5fa;
   --tile-bg:        #ffffff;
 
@@ -46,7 +73,7 @@
   --neg:            #dc2626;
   --ember:          #d4531d;
 
-  /* Accent — Midori green, light mode */
+  /* Accent — Midorii green, light mode */
   --accent:         #059669;
   --accent-bg:      rgba(5, 150, 105, 0.08);
   --accent-brd:     rgba(5, 150, 105, 0.22);
@@ -57,9 +84,10 @@
   --blob1-clr:      color-mix(in srgb, var(--accent) 11%, transparent);
   --blob2-clr:      color-mix(in srgb, var(--accent)  9%, transparent);
 
-  --radius:         16px;
-  --radius-md:      10px;
-  --radius-sm:      8px;
+  --radius:         22px;
+  --radius-md:      16px;
+  --radius-sm:      11px;
+  --radius-pill:    999px;
 
   /* Native window controls (Electron titleBarOverlay mirrors these) */
   --titlebar-height: 40px;
@@ -67,7 +95,7 @@
 }
 
 /* ─── Chart surface, light ───────────────────────────────────────────────────
-   The chart is the one place the Living Data gradient does NOT apply. Price
+   The chart is the one place the panel language does NOT apply. Price
    action is the figure; the surface behind it stays flat and quiet so it
    never competes. */
 :root {
@@ -116,18 +144,19 @@ html.dark {
   --txt:            #eef2f7;
   --sec:            #94a3b8;
   --faint:          #64748b;
-  --brd:            rgba(226, 232, 240, 0.08);
+  --brd:            transparent;
   --line:           rgba(226, 232, 240, 0.08);
   --line-soft:      rgba(226, 232, 240, 0.05);
+  --scroll-thumb:   rgba(226, 232, 240, 0.18);
 
-  --panel-a:        rgba(30, 41, 59, 0.62);
-  --panel-b:        rgba(30, 41, 59, 0.34);
-  --panel-shadow:   0 12px 34px rgba(0, 0, 0, 0.35);
-  --glass:          rgba(255, 255, 255, 0.04);
-  --glass-brd:      rgba(255, 255, 255, 0.10);
+  --panel-bg:       rgba(30, 41, 59, 0.62);
+  --panel-shadow:   0 18px 44px -10px rgba(0, 0, 0, 0.55);
+  --glass:          color-mix(in srgb, var(--sec) 12%, transparent);
+  --glass-brd:      transparent;
+  --glass-strong:   color-mix(in srgb, var(--sec) 18%, transparent);
 
-  --topbar-bg:      var(--glass);
-  --topbar-shadow:  0 6px 22px rgba(0,0,0,0.35), 0 1px 6px rgba(0,0,0,0.20), inset 0 1px 0 rgba(255,255,255,0.08);
+  --topbar-bg:      rgba(12, 20, 34, 0.72);
+  --topbar-shadow:  0 12px 34px -16px rgba(0, 0, 0, 0.75);
   --rail-bg:        #0c1422;
   --tile-bg:        #121c2e;
 
@@ -135,7 +164,7 @@ html.dark {
   --neg:            #f87171;
   --ember:          #ff7847;
 
-  /* Accent — Midori green, dark mode */
+  /* Accent — Midorii green, dark mode */
   --accent:         #34d399;
   --accent-bg:      rgba(52, 211, 153, 0.09);
   --accent-brd:     rgba(52, 211, 153, 0.25);

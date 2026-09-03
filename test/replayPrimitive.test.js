@@ -12,9 +12,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import {
-  announcedEntries, barIndexAt, positionExtent,
-} from '../src/components/chart/replayPrimitive.js';
+import { barIndexAt, positionExtent } from '../src/components/chart/replayPrimitive.js';
 
 const BAR = 10;                                  // pixels per bar
 const PANE = 500;
@@ -98,43 +96,4 @@ test('every bar of a window resolves to itself', () => {
   for (let i = 0; i < window.length; i++) {
     assert.equal(barIndexAt(window, window[i].time), i, `bar ${i} moved`);
   }
-});
-
-/* ─── What has been sent but has not filled ─────────────────────────────── */
-
-test('a market entry waiting for the next bar is announced', () => {
-  /* Until this existed a market order drew nothing at all — it has no price of
-   * its own — so pressing Buy looked like it had done nothing until the bar
-   * that answered it arrived. */
-  const orders = [{ type: 'market', side: 'buy', size: 1, reduceOnly: false }];
-  assert.deepEqual(announcedEntries(orders), orders);
-});
-
-test('an exit is not announced as an arriving position', () => {
-  // reduceOnly closes what is already drawn; announcing it would put a second
-  // position on the chart facing the other way.
-  const orders = [{ type: 'market', side: 'sell', size: 1, reduceOnly: true }];
-  assert.deepEqual(announcedEntries(orders), []);
-});
-
-test('a resting entry is not announced — it has a price and a line of its own', () => {
-  assert.deepEqual(announcedEntries([
-    { type: 'limit', side: 'buy', size: 1, limitPrice: 100 },
-    { type: 'stop', side: 'buy', size: 1, stopPrice: 120 },
-  ]), []);
-});
-
-test('only the market entries come back out of a mixed book', () => {
-  const entry = { type: 'market', side: 'buy', size: 2, reduceOnly: false };
-  const book = [
-    { type: 'limit', side: 'sell', size: 1, limitPrice: 130 },
-    entry,
-    { type: 'market', side: 'sell', size: 2, reduceOnly: true },
-  ];
-  assert.deepEqual(announcedEntries(book), [entry]);
-});
-
-test('nothing pending is nothing announced', () => {
-  assert.deepEqual(announcedEntries([]), []);
-  assert.deepEqual(announcedEntries(null), []);
 });

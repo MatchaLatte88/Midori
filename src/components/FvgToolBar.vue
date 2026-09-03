@@ -102,14 +102,14 @@ function setWick(value) {
   min-width: 24px;
   height: 22px;
   padding: 0 5px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--brd);
   border-radius: var(--radius-sm);
-  background: transparent;
+  background: var(--glass);
   color: var(--sec);
   font-size: 11px;
   cursor: pointer;
 }
-.pick:hover { border-color: var(--brd); color: var(--txt); }
+.pick:hover { background: var(--glass-strong); color: var(--txt); }
 .pick.is-active {
   border-color: var(--accent-brd);
   background: var(--accent-bg);

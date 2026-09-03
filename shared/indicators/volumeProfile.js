@@ -6,7 +6,7 @@
  * tool that profiles the bars it happens to be displaying gives a coarser
  * answer on a 4h chart than on a 5m one — same market, different POC.
  *
- * Midori always stores 1m bars and always builds the profile from those, no
+ * Midorii always stores 1m bars and always builds the profile from those, no
  * matter what the chart is showing. The displayed timeframe changes the
  * candles, never the profile.
  *
@@ -321,7 +321,7 @@ export const VOLUME_PROFILE_PARAMS = [
     type: 'select',
     default: 'uniform',
     hint: 'A bar does not record which price each trade happened at, so its volume '
-      + 'has to be spread over its range. Midori profiles 1-minute bars, so that '
+      + 'has to be spread over its range. Midorii profiles 1-minute bars, so that '
       + 'range is small and the choice matters less than it would on a 4h chart.',
     options: [
       { value: 'uniform', label: 'Across the bar range' },

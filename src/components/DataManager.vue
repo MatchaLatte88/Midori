@@ -114,7 +114,7 @@ function deltaLabel(d) {
          the chart view, so an error raised anywhere else had nowhere to go. -->
 
     <div class="k-eyebrow library-head">Local library</div>
-    <p v-if="!session.datasets.length" class="k-mono-meta">Nothing downloaded yet.</p>
+    <p v-if="!session.datasets.length" class="k-prose">Nothing downloaded yet.</p>
     <ul v-else class="library">
       <li
         v-for="d in session.datasets"
@@ -137,9 +137,9 @@ function deltaLabel(d) {
 .data-panel {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px;
-  width: 300px;
+  gap: 14px;
+  padding: 18px;
+  width: 312px;
   flex-shrink: 0;
   overflow-y: auto;
 }
@@ -188,6 +188,6 @@ function deltaLabel(d) {
   border-color: var(--accent-brd);
   background: var(--accent-bg);
 }
-.lib-symbol { font-family: 'Plus Jakarta Sans', Inter, sans-serif; font-weight: 600; }
+.lib-symbol { font-family: var(--font-num); font-weight: 600; }
 .no-delta { color: var(--ember); }
 </style>

@@ -54,7 +54,7 @@ const placement = computed(() => {
   padding: 9px 11px;
   border: 1px solid var(--brd);
   border-radius: var(--radius-md);
-  background: linear-gradient(160deg, var(--panel-a), var(--panel-b));
+  background: var(--panel-bg);
   box-shadow: var(--panel-shadow);
   pointer-events: none;
 }

@@ -282,7 +282,7 @@ const describe = (params, sweep) => Object.keys(sweep?.ranges ?? {})
           <span class="k-mono-label">To</span>
           <input v-model="to" class="input input--sm" type="date" :disabled="running" />
         </label>
-        <p v-if="dataset" class="k-mono-label faint">
+        <p v-if="dataset" class="k-prose faint">
           Data: {{ isoDay(dataset.first) }} → {{ isoDay(dataset.last) }}
         </p>
 
@@ -339,7 +339,7 @@ const describe = (params, sweep) => Object.keys(sweep?.ranges ?? {})
           >
             {{ detections.toLocaleString() }} detection{{ detections === 1 ? '' : 's' }} — this is what costs the time
           </div>
-          <div v-if="overLimit" class="warn k-mono-label">
+          <div v-if="overLimit" class="warn k-prose">
             Over the limit of {{ MAX_COMBINATIONS.toLocaleString() }}. Widen a step or drop a parameter.
           </div>
         </div>
@@ -349,8 +349,8 @@ const describe = (params, sweep) => Object.keys(sweep?.ranges ?? {})
         </button>
         <button v-else class="btn btn--danger" @click="stop">Stop</button>
 
-        <p v-if="!session.symbol" class="warn k-mono-label">Select a symbol on the chart first.</p>
-        <p class="k-mono-label faint">
+        <p v-if="!session.symbol" class="warn k-prose">Select a symbol on the chart first.</p>
+        <p class="k-prose faint">
           Results are not stored — they last as long as this view does.
         </p>
       </template>
@@ -367,14 +367,14 @@ const describe = (params, sweep) => Object.keys(sweep?.ranges ?? {})
             · about {{ duration(progress.etaMs) }} left
           </div>
         </template>
-        <p v-else class="k-mono-label faint">Reading the bars for this range…</p>
+        <p v-else class="k-prose faint">Reading the bars for this range…</p>
       </div>
 
-      <div v-else-if="stopped" class="placeholder k-mono-label">
+      <div v-else-if="stopped" class="placeholder k-prose">
         Stopped. Nothing was stored — the combinations already run are not a sweep.
       </div>
 
-      <div v-else-if="!result" class="placeholder k-mono-label">
+      <div v-else-if="!result" class="placeholder k-prose">
         Give at least one parameter a range and press Run. Every combination is ranked on the
         earlier part of the range; the ones shown are then re-run on the later part.
       </div>
@@ -383,7 +383,7 @@ const describe = (params, sweep) => Object.keys(sweep?.ranges ?? {})
         <header class="result-head">
           <div>
             <h2 class="title">{{ result.combinationCount.toLocaleString() }} combinations</h2>
-            <p class="subtitle k-mono-label">
+            <p class="subtitle k-prose">
               {{ result.symbol }} · {{ result.timeframe }} ·
               ranked by {{ RANK_METRICS[result.metric]?.label ?? result.metric }} ·
               {{ duration(result.elapsedMs) }}
@@ -391,10 +391,10 @@ const describe = (params, sweep) => Object.keys(sweep?.ranges ?? {})
           </div>
         </header>
 
-        <p v-if="result.excludedCount" class="k-mono-label faint">
+        <p v-if="result.excludedCount" class="k-prose faint">
           {{ result.excludedCount }} set aside for taking fewer than {{ result.minTrades }} trades.
         </p>
-        <p v-if="result.overlapping" class="warn k-mono-label">
+        <p v-if="result.overlapping" class="warn k-prose">
           Too few combinations ranked for the two ends to be distinct — they overlap.
         </p>
 
@@ -436,7 +436,7 @@ const describe = (params, sweep) => Object.keys(sweep?.ranges ?? {})
           </table>
         </div>
 
-        <p class="note k-mono-label">
+        <p class="note k-prose">
           The out-of-sample column is the one worth reading. A combination that leads in-sample
           and collapses beside it was fitted to those particular bars.
         </p>
@@ -451,18 +451,18 @@ const describe = (params, sweep) => Object.keys(sweep?.ranges ?? {})
 .setup {
   display: flex;
   flex-direction: column;
-  gap: 7px;
-  width: 340px;
+  gap: 10px;
+  width: 352px;
   flex: none;
-  padding: 12px;
+  padding: 18px;
   overflow-y: auto;
 }
 .output {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px;
+  gap: 14px;
+  padding: 18px;
   overflow-y: auto;
 }
 
@@ -474,12 +474,12 @@ const describe = (params, sweep) => Object.keys(sweep?.ranges ?? {})
 
 .strategies { display: flex; flex-wrap: wrap; gap: 4px; }
 .strategy {
-  padding: 5px 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: transparent;
+  padding: 10px 15px;
+  border: 1px solid var(--brd);
+  border-radius: var(--radius-md);
+  background: var(--glass);
   color: var(--sec);
-  font-family: 'Plus Jakarta Sans', Inter, sans-serif;
+  font-family: var(--font-num);
   font-weight: 600;
   font-size: 11.5px;
   cursor: pointer;
@@ -514,7 +514,7 @@ const describe = (params, sweep) => Object.keys(sweep?.ranges ?? {})
 .result-head { display: flex; align-items: flex-start; justify-content: space-between; }
 .title {
   margin: 0;
-  font-family: 'Plus Jakarta Sans', Inter, sans-serif;
+  font-family: var(--font-num);
   font-size: 17px;
   font-weight: 700;
 }
@@ -525,7 +525,7 @@ const describe = (params, sweep) => Object.keys(sweep?.ranges ?? {})
 .table {
   width: 100%;
   border-collapse: collapse;
-  font-family: 'DM Mono', ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11.5px;
 }
 .table th {

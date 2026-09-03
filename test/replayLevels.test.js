@@ -21,7 +21,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  CLOSE_INSET, closeButtonRect, draggableLevels, fieldForPrice, inRect, levelAt, levelRefusal,
+  CLOSE_INSET, closeButtonRect, draggableLevels, draggableOrders, fieldForPrice, inRect, levelAt,
+  levelRefusal, orderAt, orderRefusal,
 } from '../src/components/chart/replayLevels.js';
 
 const EXTENT = { left: 100, right: 500 };
@@ -178,4 +179,73 @@ test('the button moves with the entry line and with the pane', () => {
    * been resized or a position that has been re-scaled must move both. */
   assert.notDeepEqual(closeButtonRect(800, 300), closeButtonRect(800, 120));
   assert.notDeepEqual(closeButtonRect(800, 300), closeButtonRect(640, 300));
+});
+
+/* ─── Orders that are still waiting ─────────────────────────────────────── */
+
+const order = (over = {}) => ({
+  id: 1, side: 'buy', type: 'limit', size: 1, limitPrice: 90, stopPrice: null, tag: null, ...over,
+});
+
+test('an open position’s own stop and target get no line of their own', () => {
+  const orders = [
+    order({ id: 1, tag: 'stop-loss', type: 'stop', stopPrice: 95, positionId: 7 }),
+    order({ id: 2, tag: 'take-profit', limitPrice: 110, positionId: 7 }),
+    order({ id: 3, tag: null, limitPrice: 90 }),
+  ];
+
+  const drawn = draggableOrders(orders, [{ id: 7 }]);
+
+  assert.deepEqual(drawn.map((o) => o.id), [3], 'the block already draws the other two');
+});
+
+test('a leg whose position is gone keeps its line, because nothing else shows it', () => {
+  const orders = [order({ id: 1, tag: 'stop-loss', type: 'stop', stopPrice: 95, positionId: 7 })];
+  assert.equal(draggableOrders(orders, []).length, 1);
+});
+
+test('an order with no price to wait at is not drawn', () => {
+  assert.equal(draggableOrders([order({ limitPrice: null })], []).length, 0);
+});
+
+test('the nearest order line within reach is the one taken hold of', () => {
+  const extent = { left: 100, right: 400 };
+  const rows = [{ id: 4, y: 200 }, { id: 9, y: 206 }];
+
+  assert.equal(orderAt({ x: 200, y: 205 }, extent, rows), 9);
+  assert.equal(orderAt({ x: 200, y: 201 }, extent, rows), 4);
+  assert.equal(orderAt({ x: 200, y: 240 }, extent, rows), null, 'too far from either');
+  assert.equal(orderAt({ x: 50, y: 200 }, extent, rows), null, 'left of where the line runs');
+});
+
+test('a resting entry may not be dragged to where it is already marketable', () => {
+  assert.match(
+    orderRefusal(order({ type: 'limit', side: 'buy' }), 105, 100),
+    /already marketable/,
+  );
+  assert.equal(orderRefusal(order({ type: 'limit', side: 'buy' }), 95, 100), null);
+
+  assert.match(
+    orderRefusal(order({ type: 'stop', side: 'buy' }), 95, 100),
+    /already triggered/,
+  );
+  assert.equal(orderRefusal(order({ type: 'stop', side: 'buy' }), 105, 100), null);
+});
+
+test('a resting entry may not be dragged past its own stop or target', () => {
+  const buy = order({ type: 'limit', side: 'buy', bracket: { stopLoss: 88, takeProfit: 120 } });
+
+  assert.match(orderRefusal(buy, 87, 100), /far side of its own stop/);
+  assert.match(orderRefusal(buy, 125, 130), /past its own target/);
+  assert.equal(orderRefusal(buy, 95, 100), null);
+
+  /* A sell limit rests above the market, so 121 clears the marketable check and
+   * is refused for the reason being tested rather than for the other one. */
+  const sell = order({ type: 'limit', side: 'sell', bracket: { stopLoss: 120, takeProfit: 80 } });
+  assert.match(orderRefusal(sell, 121, 100), /far side of its own stop/);
+  assert.equal(orderRefusal(sell, 110, 100), null);
+});
+
+test('a price that is not one is refused before anything else is asked', () => {
+  assert.match(orderRefusal(order(), NaN, 100), /not a price/);
 });
